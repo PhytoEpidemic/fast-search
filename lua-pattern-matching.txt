@@ -1,0 +1,46 @@
+This is a Lua based search and has a number of available wild cards, which are strings formed by a combination of characters and special symbols.
+
+
+. (dot): The dot matches any single character.
+
+%a: This pattern class represents all letters (both upper and lower case).
+
+%c: Represents all control characters.
+
+%d: Represents all digits (0-9).
+
+%l: Represents all lowercase letters.
+
+%p: Represents all punctuation characters.
+
+%s: Represents all space characters, including spaces, tabs, newlines, and similar whitespace characters.
+
+%u: Represents all uppercase letters.
+
+%w: Represents all alphanumeric characters (letters and digits).
+
+%x: Represents all hexadecimal digits (0-9, A-F, and a-f).
+
+%z: Represents the character with representation 0 (null character).
+
+%%: Represents a literal '%' character.
+
+% followed by any other non-alphanumeric character (e.g., %@): Represents the literal character that follows the '%'. For example, %@ will match the '@' character.
+
+[set]: Represents a character class. It matches any single character within the 'set'. For example, [abc] will match either 'a', 'b', or 'c'. You can use a range of characters within the 'set' by specifying the start and end characters separated by a hyphen, such as [a-z] to match any lowercase letter.
+
+[^set]: Represents a complemented character class. It matches any single character not within the 'set'. For example, [^abc] will match any character except 'a', 'b', or 'c'.
+
+*: Represents zero or more repetitions of the previous character or class. For example, ab*c will match 'ac', 'abc', 'abbc', and so on.
+
++: Represents one or more repetitions of the previous character or class. For example, ab+c will match 'abc', 'abbc', but not 'ac'.
+
+-: Represents zero or more repetitions of the previous character or class, but it tries to match the shortest possible sequence (also known as non-greedy). For example, with the input 'abcc', the pattern ab- will match 'ab' and not 'abc' or 'abcc'.
+
+?: Represents zero or one occurrence of the previous character or class. For example, ab?c will match either 'ac' or 'abc', but not 'abbc'.
+
+^: When used at the beginning of a pattern, it asserts that the pattern must start at the beginning of the string. For example, ^abc will match 'abc' only if it appears at the start of the string.
+
+$: When used at the end of a pattern, it asserts that the pattern must end at the end of the string. For example, abc$ will match 'abc' only if it appears at the end of the string.
+
+(pat): Represents a capturing group. It captures the part of the string that matches the pattern 'pat'. You can access the
