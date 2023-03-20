@@ -25,10 +25,9 @@ Xresults.txt
 Yresults.txt
 Zresults.txt
 error.txt
-SearchAgent.exe
-FastSearch.exe
-Fast Search.exe
 Fast-Search.SED
 lua5.1.dll
 makeEXE.bat
 lfs.dll
+*.exe
+Releases
