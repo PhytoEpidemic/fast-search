@@ -270,6 +270,18 @@ function Search-FilesAndFolders {
         }
 }
 
+function Stop-Search {
+	foreach ($drive in $drives) {
+		$driveLetter = $drive.Root.Substring(0, 1)
+		$isRunning = IsProcessRunning -driveLetter $driveLetter
+		if ($isRunning) {
+			$process = $runningProcesses[$driveLetter]
+			Stop-Process -Id $process.Id -Force
+		}
+	}
+}
+
+
 function run-search {
 	$timer.Stop()
 	$searchText = $textbox.Text
@@ -286,8 +298,8 @@ function run-search {
         
     }
 	$lua = "SearchAgent.exe" 
-	taskkill /F /IM $lua
-	
+	#taskkill /F /IM $lua
+	Stop-Search
 
 	foreach ($drive in $drives) {
 		$luaScriptPath = "luasearch.lua"
@@ -376,7 +388,7 @@ $timer.Add_Tick({
 	if ($MadeChange) {
 		#Resize-ListBoxWidthBasedOnLongestItem -listBoxControl $listbox
 		Update-ItemCountLabel
-		$timer.Interval = 1000+$listbox.Items.Count
+		$timer.Interval = 1000
 		Update-Sort
 	}
 	Update-ProcessCountLabel
@@ -394,7 +406,8 @@ $listbox.Add_MouseDoubleClick({
 $form.Add_FormClosing({
 	$timer.Stop()
 	$lua = "SearchAgent.exe" 
-	taskkill /F /IM $lua
+	#taskkill /F /IM $lua
+	Stop-Search
 })
 
 $form.ShowDialog()
