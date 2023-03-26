@@ -77,6 +77,7 @@ end
 function search_files_and_folders(searchText, drive)
     local driveletter = drive:sub(1,1)
 	os.remove(driveletter .. "results.txt")
+	os.remove(driveletter .. "stats.txt")
     local search_table = split_by_spaces(searchText)
 	local negatives = {}
 	for i,word in ipairs(search_table) do

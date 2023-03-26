@@ -10,6 +10,33 @@ $toolTip.AutoPopDelay = 10000
 Return $toolTip
 }
 
+function Load-Options {
+    param (
+        [string]$Filename
+    )
+
+    $options = @{}
+
+    Get-Content $Filename | ForEach-Object {
+        $line = $_
+        $matchResult = [regex]::Match($line, '^(.+?)=(.+)$')
+
+        if ($matchResult.Success) {
+            $label = $matchResult.Groups[1].Value
+            $value = $matchResult.Groups[2].Value
+
+            if ($value.ToLower() -eq "true" -or $value.ToLower() -eq "false") {
+                $value = $value.ToLower() -eq "true"
+            }
+
+            $options[$label] = $value
+        }
+    }
+
+    return $options
+}
+
+
 function Sort-ListBoxAlphabetically {
     param([System.Windows.Forms.ListBox]$listbox)
 
@@ -149,10 +176,15 @@ $sortButton.Add_Click({
     Sort-ListBoxAlphabetically -listbox $listbox
 })
 
-$label = New-Object System.Windows.Forms.Label
-$label.Location = New-Object System.Drawing.Point(20, 60)
-$label.AutoSize = $true
-$form.Controls.Add($label)
+$searchResultsLabel = New-Object System.Windows.Forms.Label
+$searchResultsLabel.Location = New-Object System.Drawing.Point(20, 60)
+$searchResultsLabel.AutoSize = $true
+$form.Controls.Add($searchResultsLabel)
+$searchCountLabel = New-Object System.Windows.Forms.Label
+$searchCountLabel.Location = New-Object System.Drawing.Point(20, 42)
+$searchCountLabel.AutoSize = $true
+$searchCountLabel.Text = "Search Count: 0"
+$form.Controls.Add($searchCountLabel)
 $processCountlabel = New-Object System.Windows.Forms.Label
 $processCountlabel.Location = New-Object System.Drawing.Point(20, 80)
 $processCountlabel.AutoSize = $true
@@ -161,9 +193,16 @@ $form.Controls.Add($processCountlabel)
 $form.Controls.Add($dropdown)
 $form.Controls.Add($SBlabel)
 
+function Add-ThousandsSeparator {
+    param (
+        [int]$Number
+    )
+
+    return $Number.ToString("N0", [Globalization.CultureInfo]::InvariantCulture)
+}
 
 
-# Function to update the label with the item count
+
 function Update-ProcessCountLabel {
 	$processCount = 0
 	$newprocessCountlabelText = "Active Searches:"
@@ -184,7 +223,7 @@ function Update-ProcessCountLabel {
 }
 function Update-ItemCountLabel {
 	
-    $label.Text = "Search Results: " + $listbox.Items.Count
+    $searchResultsLabel.Text = "Search Results: " + $listbox.Items.Count
    
 }
 Update-ProcessCountLabel
@@ -257,7 +296,7 @@ $form.Add_Resize({
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 1000
 
-$resultFile = $PSScriptRoot + '\search_results.txt'
+#$resultFile = $PSScriptRoot + '\search_results.txt'
 
 function Search-FilesAndFolders {
     param([string]$searchText, [string]$drive)
@@ -289,7 +328,7 @@ function run-search {
 	Update-ItemCountLabel
     #$listbox.Size = New-Object System.Drawing.Size(340, 200)
 	#$form.Size = New-Object System.Drawing.Size(400, 200)
-	Remove-Item $resultFile -ErrorAction Ignore
+	#Remove-Item $resultFile -ErrorAction Ignore
     Remove-Item "GUIoutput.txt" -ErrorAction Ignore
 
     $global:drives = Get-PSDrive -PSProvider FileSystem
@@ -360,11 +399,17 @@ function IsProcessRunning {
 
 $timer.Add_Tick({
     $MadeChange = $false
+	$searchCount = 0
 	foreach ($drive in $drives) {
         $driveLetter = $drive.Root.Substring(0, 1)
 		$isRunning = IsProcessRunning -driveLetter $driveLetter
 
         $resultFile = "$driveLetter" + "results.txt"
+        $statsFile = "$driveLetter" + "stats.txt"
+		if (Test-Path $statsFile) {
+			$SearchStats = Load-Options -Filename $statsFile
+			$searchCount += $SearchStats["searchcount"]
+		}
 		if (Test-Path $resultFile) {
             $NoError = $true
 			$content = Get-Content $resultFile -ErrorAction Ignore
@@ -391,6 +436,7 @@ $timer.Add_Tick({
 		$timer.Interval = 1000
 		Update-Sort
 	}
+	$searchCountLabel.Text = "Search Count: " + (Add-ThousandsSeparator -Number $searchCount)
 	Update-ProcessCountLabel
 	
 })
