@@ -141,22 +141,54 @@ $helpIcon.Image = [System.Drawing.Image]::FromFile("help2.png")
 $helpIcon.SizeMode = 'Zoom'
 $helpIcon.Size = New-Object System.Drawing.Size(16, 16)
 $helpIcon.Location = New-Object System.Drawing.Point(1, 1)
-$form.Controls.Add($helpIcon)
+#$form.Controls.Add($helpIcon)
 $tooltip = (MakeToolTip)
 $toolTip.AutoPopDelay = 90000
 $toolTip.InitialDelay = 50
 $helpIcon.Add_Click({
-	Start-Process -FilePath "notepad.exe" -ArgumentList "lua-pattern-matching.txt"
+	#Start-Process -FilePath "notepad.exe" -ArgumentList "lua-pattern-matching.txt"
 })
-$toolTip.SetToolTip($helpIcon,(Get-Content "lua-pattern-matching.txt" -Raw))
-# Initialize textbox
-$textbox = New-Object System.Windows.Forms.TextBox
-$textbox.Location = New-Object System.Drawing.Point(20, 20)
-$textbox.Size = New-Object System.Drawing.Size(340, 20)
-$textbox.Add_TextChanged({
+#$toolTip.SetToolTip($helpIcon,(Get-Content "searchhelp.txt" -Raw))
+
+# Initialize searchBox
+$searchBox = New-Object System.Windows.Forms.TextBox
+$searchBox.Location = New-Object System.Drawing.Point(20, 20)
+$searchBox.Size = New-Object System.Drawing.Size(340, 20)
+$toolTip.SetToolTip($searchBox,(Get-Content "searchhelp.txt" -Raw))
+$searchBox.Add_TextChanged({
 	#run-search
 })
-$form.Controls.Add($textbox)
+$textBox_KeyDown = {
+    if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+        run-search
+    }
+}
+
+# Subscribe to the KeyDown event
+$searchBox.add_KeyDown($textBox_KeyDown)
+$searchBox.Add_TextChanged({
+    # Save current cursor position
+    $currentCursorPosition = $searchBox.SelectionStart
+	$oldText = $searchBox.Text
+    # Replace newline characters with spaces
+    $searchBox.Text = $searchBox.Text -replace "`n", " "
+
+    # Replace double spaces with single spaces
+    $searchBox.Text = $searchBox.Text -replace "  ", " "
+
+    # Check if the new text length is shorter than the saved cursor position
+    if ($searchBox.Text.Length -lt $currentCursorPosition) {
+        # Move the cursor to the end of the new text
+        $searchBox.SelectionStart = $searchBox.Text.Length
+    } elseif ($oldText -ne $searchBox.Text) {
+        # Restore the saved cursor position
+        $searchBox.SelectionStart = $currentCursorPosition
+    }
+})
+
+
+
+$form.Controls.Add($searchBox)
 
 # Initialize button
 $button = New-Object System.Windows.Forms.Button
@@ -323,7 +355,7 @@ function Stop-Search {
 
 function run-search {
 	$timer.Stop()
-	$searchText = $textbox.Text
+	$searchText = $searchBox.Text
     $listbox.Items.Clear()
 	Update-ItemCountLabel
     #$listbox.Size = New-Object System.Drawing.Size(340, 200)

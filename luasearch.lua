@@ -9,6 +9,19 @@ function split_by_spaces(input_string)
     return result
 end
 
+
+function windowsToLuaPattern(windowsPattern)
+    -- Escape Lua magic characters
+    local pattern = windowsPattern:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
+    
+    -- Convert Windows wildcards (*) and (?)
+    pattern = pattern:gsub("%%%*", ".*")
+    pattern = pattern:gsub("%%%?", ".")
+    
+    return pattern
+end
+
+
 function contains_all_words(input_string, words_table, negatives)
     for i, word in ipairs(words_table) do
         local found_match = string.match(input_string, word)
@@ -87,6 +100,7 @@ function search_files_and_folders(searchText, drive)
 		else
 			negatives[i] = false
 		end
+		search_table[i] = windowsToLuaPattern(search_table[i])
 	end
 	local searchcount = 0
 	function search(path)
