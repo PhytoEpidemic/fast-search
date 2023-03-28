@@ -5,9 +5,21 @@ Function MakeToolTip ()
 	$toolTip = New-Object System.Windows.Forms.ToolTip
 $toolTip.InitialDelay = 100
 $toolTip.AutoPopDelay = 10000
-# Set the text of the tooltip
 	
 Return $toolTip
+}
+
+function Test-PathWithErrorHandling {
+    param (
+        [string]$Path
+    )
+
+    try {
+        $result = Test-Path -Path $Path -ErrorAction Stop
+        return $result
+    } catch {
+        return $false
+    }
 }
 
 function Load-Options {
@@ -36,89 +48,99 @@ function Load-Options {
     return $options
 }
 
-
-function Sort-ListBoxAlphabetically {
-    param([System.Windows.Forms.ListBox]$listbox)
-
-    # Get the items in the listbox as an array
-    $itemsArray = @($listbox.Items)
-
-    # Sort the items alphabetically
-    $sortedItemsArray = $itemsArray | Sort-Object
-
-    # Clear the listbox and add the sorted items
-    $listbox.Items.Clear()
-    $listbox.Items.AddRange($sortedItemsArray)
-}
-
-function Sort-ListBoxByLastChild {
-    param([System.Windows.Forms.ListBox]$listbox)
-
-    # Get the items in the listbox as an array
-    $itemsArray = @($listbox.Items)
-
-    # Sort the items based on the last child item in each path
-    $sortedItemsArray = $itemsArray | Sort-Object -Property { Split-Path $_ -Leaf }
-
-    # Clear the listbox and add the sorted items
-    $listbox.Items.Clear()
-    $listbox.Items.AddRange($sortedItemsArray)
-}
-
-function Sort-ListBoxByType {
-    param([System.Windows.Forms.ListBox]$listbox)
-
-    # Get the items in the listbox as an array
-    $itemsArray = @($listbox.Items)
-
-    # Sort the items by file type, with folders and items without extensions first
-    $sortedItemsArray = $itemsArray | Sort-Object -Property {
-        if ($_ -match '\.') {
-            $extension = $_ -replace '^.*\.', ''
-            if ($extension -eq $_) {
-                return '0' # For folders and items without extensions
-            }
-            return $extension
-        }
-        return '0'
+function Sort-ListBoxAlphabetically ($directories, $ascending) {
+    if ($ascending) {
+        return $directories | Sort-Object
+    } else {
+        return $directories | Sort-Object -Descending
     }
-
-    # Clear the listbox and add the sorted items
-    $listbox.Items.Clear()
-    $listbox.Items.AddRange($sortedItemsArray)
 }
 
-# Create the label
+function Sort-ListBoxByLastChild ($directories, $ascending) {
+    if ($ascending) {
+        return $directories | Sort-Object -Property { Split-Path $_ -Leaf }
+    } else {
+        return $directories | Sort-Object -Property { Split-Path $_ -Leaf } -Descending
+    }
+}
+
+function Sort-ListBoxByType ($directories, $ascending) {
+	if ($ascending) {
+		return $directories | Sort-Object -Property {
+			if ($_ -match '\.') {
+				$extension = $_ -replace '^.*\.', ''
+				if ($extension -eq $_) {
+					return '0' # For folders and items without extensions
+				}
+				return $extension
+			}
+			return '0'
+		}
+	} else {
+		return $directories | Sort-Object -Property {
+			if ($_ -match '\.') {
+				$extension = $_ -replace '^.*\.', ''
+				if ($extension -eq $_) {
+					return '0' # For folders and items without extensions
+				}
+				return $extension
+			}
+			return '0'
+		} -Descending
+	}
+}
+
+
+
+$AccedingSort = $true
+
+
 $SBlabel = New-Object System.Windows.Forms.Label
 $SBlabel.Text = "Sort By:"
 $SBlabel.Location = New-Object System.Drawing.Point(220, 75)
 
 
-# Create the dropdown menu (ComboBox)
+
 $dropdown = New-Object System.Windows.Forms.ComboBox
 $dropdown.Location = New-Object System.Drawing.Point(270, 75)
 $dropdown.Size = New-Object System.Drawing.Size(100, 21)
 $dropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 
-# Add options to the dropdown menu
-$dropdown.Items.Add("Name")
+
 $dropdown.Items.Add("Drive")
+$dropdown.Items.Add("Name")
 $dropdown.Items.Add("Type")
 
-# Set the default selected option
 $dropdown.SelectedIndex = 0
+
+$VirtualList = @()
 function Update-Sort {
-	switch ($dropdown.SelectedItem) {
-        "Drive" {
-            Sort-ListBoxAlphabetically -listbox $listbox
-        }
-		"Name" {
-            Sort-ListBoxByLastChild -listbox $listbox
-        }
-        "Type" {
-            Sort-ListBoxByType -listbox $listbox
-        }
-    }
+	if ($global:VirtualList.Count -gt 1) {
+		switch ($dropdown.SelectedItem) {
+			"Drive" {
+					$sortedDirectories = Sort-ListBoxAlphabetically $global:VirtualList $AccedingSort
+					$virtualListView.VirtualListSize = $sortedDirectories.Count
+					$global:VirtualList = @()
+					$virtualListView.Invalidate()
+					$global:VirtualList = $sortedDirectories
+			}
+				"Name" {
+				$sortedDirectories = Sort-ListBoxByLastChild $global:VirtualList $AccedingSort
+					$virtualListView.VirtualListSize = $sortedDirectories.Count
+					$global:VirtualList = @()
+					$virtualListView.Invalidate()
+					$global:VirtualList = $sortedDirectories
+			}
+			"Type" {
+				$sortedDirectories = Sort-ListBoxByType $global:VirtualList $AccedingSort
+					$virtualListView.VirtualListSize = $sortedDirectories.Count
+					$global:VirtualList = @()
+					$virtualListView.Invalidate()
+					$global:VirtualList = $sortedDirectories
+			}
+		}
+	}
+	
 }
 # Handle the dropdown menu's SelectedIndexChanged event
 $dropdown.Add_SelectedIndexChanged({
@@ -128,7 +150,7 @@ $dropdown.Add_SelectedIndexChanged({
 # Initialize form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Power Search'
-$form.Size = New-Object System.Drawing.Size(400, 300)
+$form.Size = New-Object System.Drawing.Size(400, 400)
 $minWidth = 400
 $minHeight = 300
 $form.MinimumSize = New-Object System.Drawing.Size($minWidth, $minHeight)
@@ -144,69 +166,50 @@ $helpIcon.Location = New-Object System.Drawing.Point(1, 1)
 #$form.Controls.Add($helpIcon)
 $tooltip = (MakeToolTip)
 $toolTip.AutoPopDelay = 90000
-$toolTip.InitialDelay = 50
+$toolTip.InitialDelay = 100
 $helpIcon.Add_Click({
 	#Start-Process -FilePath "notepad.exe" -ArgumentList "lua-pattern-matching.txt"
 })
 #$toolTip.SetToolTip($helpIcon,(Get-Content "searchhelp.txt" -Raw))
 
-# Initialize searchBox
+
 $searchBox = New-Object System.Windows.Forms.TextBox
 $searchBox.Location = New-Object System.Drawing.Point(20, 20)
 $searchBox.Size = New-Object System.Drawing.Size(340, 20)
 $toolTip.SetToolTip($searchBox,(Get-Content "searchhelp.txt" -Raw))
-$searchBox.Add_TextChanged({
-	#run-search
-})
+
 $textBox_KeyDown = {
     if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
         run-search
     }
 }
 
-# Subscribe to the KeyDown event
+
 $searchBox.add_KeyDown($textBox_KeyDown)
 $searchBox.Add_TextChanged({
-    # Save current cursor position
-    $currentCursorPosition = $searchBox.SelectionStart
-	$oldText = $searchBox.Text
-    # Replace newline characters with spaces
-    $searchBox.Text = $searchBox.Text -replace "`n", " "
-
-    # Replace double spaces with single spaces
-    $searchBox.Text = $searchBox.Text -replace "  ", " "
-
-    # Check if the new text length is shorter than the saved cursor position
-    if ($searchBox.Text.Length -lt $currentCursorPosition) {
-        # Move the cursor to the end of the new text
-        $searchBox.SelectionStart = $searchBox.Text.Length
-    } elseif ($oldText -ne $searchBox.Text) {
-        # Restore the saved cursor position
-        $searchBox.SelectionStart = $currentCursorPosition
-    }
+	$currentCursorPosition = $searchBox.SelectionStart
+	$searchBox.Text = $searchBox.Text -replace "`n", " "
+	$searchBox.Text = $searchBox.Text -replace "  ", " "
+	
+	if ($searchBox.Text.Length -lt $currentCursorPosition) {
+		$searchBox.SelectionStart = $searchBox.Text.Length
+	} else {
+		$searchBox.SelectionStart = $currentCursorPosition
+	}
 })
 
 
 
 $form.Controls.Add($searchBox)
 
-# Initialize button
-$button = New-Object System.Windows.Forms.Button
-$button.Text = 'Search'
-$button.Location = New-Object System.Drawing.Point(270, 40)
-$button.AutoSize = $true
-$form.Controls.Add($button)
-# Create the sort button
-$sortButton = New-Object System.Windows.Forms.Button
-$sortButton.Location = New-Object System.Drawing.Point(350, 60)
-$sortButton.AutoSize = $true
-$sortButton.Text = "Sort Alphabetically"
-#$form.Controls.Add($sortButton)
 
-# Sort the listbox alphabetically when the button is clicked
-$sortButton.Add_Click({
-    Sort-ListBoxAlphabetically -listbox $listbox
-})
+$searchButton = New-Object System.Windows.Forms.Button
+$searchButton.Text = 'Search'
+$searchButton.Location = New-Object System.Drawing.Point(270, 40)
+$searchButton.AutoSize = $true
+$form.Controls.Add($searchButton)
+
+
 
 $searchResultsLabel = New-Object System.Windows.Forms.Label
 $searchResultsLabel.Location = New-Object System.Drawing.Point(20, 60)
@@ -253,38 +256,59 @@ function Update-ProcessCountLabel {
 	
 	
 }
+
+$ResultsCount = 0
+$SearchCountTracker = 0
 function Update-ItemCountLabel {
 	
-    $searchResultsLabel.Text = "Search Results: " + $listbox.Items.Count
-   
+    $searchResultsLabel.Text = "Search Results: " + $global:ResultsCount
+	$virtualListView.VirtualListSize = $global:ResultsCount
 }
 Update-ProcessCountLabel
-# Initialize result list box
-$listbox = New-Object System.Windows.Forms.ListBox
-$listbox.Location = New-Object System.Drawing.Point(20, 100)
-$listbox.Size = New-Object System.Drawing.Size(330, 150)
-$listbox.Width = $form.ClientSize.Width - 50
-$listbox.Height = $form.ClientSize.Height - (50 + $listbox.Location.Y)
-#$listbox.AutoSize = $true
-$form.Controls.Add($listbox)
-$listbox.Add_SelectedIndexChanged({
-	
+
+
+
+
+$virtualListView = New-Object System.Windows.Forms.ListView
+$virtualListView.Location = New-Object System.Drawing.Point(20, 100)
+$virtualListView.Size = New-Object System.Drawing.Size(330, 150)
+$virtualListView.Width = $form.ClientSize.Width - 50
+$virtualListView.Height = $form.ClientSize.Height - (50 + $virtualListView.Location.Y)
+$virtualListView.View = [System.Windows.Forms.View]::Details
+$virtualListView.VirtualMode = $true
+$virtualListView.VirtualListSize = 1
+
+$columnHeader = New-Object System.Windows.Forms.ColumnHeader
+$columnHeader.Text = "Location"
+$columnHeader.Width = 1920
+
+$virtualListView.add_ColumnClick({
+    param($sender, $e)
+
+    $clickedColumn = $e.Column
+	if ($clickedColumn -eq 0) {
+		
+		$global:AccedingSort = $AccedingSort -eq $false
+		Update-Sort
+		$virtualListView.Invalidate()
+	}
+    
 })
-function ResizeObject {
-    param(
-        [System.Windows.Forms.Control]$object,
-        [int]$width,
-        [int]$height
-    )
+$virtualListView.Columns.Add($columnHeader)
 
-    if ($object.Width -gt $width) {
-        $object.Width = $width
-    }
-
-    if ($object.Height -gt $height) {
-        $object.Height = $height
-    }
+$virtualListView_RetrieveVirtualItem = {
+    $itemIndex = $_.ItemIndex
+    $_.Item = New-Object System.Windows.Forms.ListViewItem($global:VirtualList[$itemIndex])
 }
+
+$virtualListView.add_RetrieveVirtualItem($virtualListView_RetrieveVirtualItem)
+
+$form.Controls.Add($virtualListView)
+
+
+
+
+
 
 function SetColors($form){
 	$isLightMode = Get-ItemPropertyValue -Path "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme"
@@ -293,53 +317,15 @@ function SetColors($form){
 }
 SetColors($form)
 
-function Resize-ListBoxWidthBasedOnLongestItem {
-    param($listBoxControl)
 
-    $maxWidth = 0
-    $graphics = $form.CreateGraphics()
-
-    foreach ($item in $listBoxControl.Items) {
-        $stringSize = $graphics.MeasureString($item, $listBoxControl.Font)
-        $itemWidth = [int]($stringSize.Width) + 3 # Add a small margin
-
-        if ($itemWidth -gt $maxWidth) {
-            $maxWidth = $itemWidth
-        }
-    }
-
-	if ($maxWidth -gt 800) {
-        $maxWidth = 800
-    }
-    $listBoxControl.Width = $maxWidth
-	
-	#$maxHeight = 400
-	#$listbox.AutoSize = $true
-	#$listbox.AutoSize = $false
-	#$form.AutoSize = $false
-	#ResizeObject -object $listBoxControl -width $maxWidth -height $maxHeight
-	#ResizeObject -object $form -width ($maxWidth+10) -height ($maxHeight+10)
-}
 $form.Add_Resize({
-	$listbox.Width = $form.ClientSize.Width - 50
-    $listbox.Height = $form.ClientSize.Height - (50 + $listbox.Location.Y)
+	$virtualListView.Width = $form.ClientSize.Width - 50
+    $virtualListView.Height = $form.ClientSize.Height - (50 + $virtualListView.Location.Y)
 })
-# Initialize timer
+
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 1000
+$timer.Interval = 100
 
-#$resultFile = $PSScriptRoot + '\search_results.txt'
-
-function Search-FilesAndFolders {
-    param([string]$searchText, [string]$drive)
-    Get-ChildItem -Path $drive -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { ($_.Name -like "*$searchText*") } |
-        ForEach-Object {
-            $itemPath = $_.FullName
-            Add-Content -Path ($PSScriptRoot + '\search_results.txt') -Value $itemPath
-            
-        }
-}
 
 function Stop-Search {
 	foreach ($drive in $drives) {
@@ -354,13 +340,27 @@ function Stop-Search {
 
 
 function run-search {
+
+	if ($searchBox.Text.Length -eq 1) {
+		$messageBoxResult = [System.Windows.Forms.MessageBox]::Show("The search text is only one character. This can cause the program to freeze for long periods of time.`n`n Are you sure you want to continue?", "Confirm", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+		if ($messageBoxResult -eq [System.Windows.Forms.DialogResult]::No) {
+			return
+		}
+	} elseif ($searchBox.Text.Length -lt 2) {
+		return
+	}
+
+
+	$global:lastLineRead = @{}
 	$timer.Stop()
+	$timer.Interval = 100
+	$global:ResultsCount = 0
+	$searchCountLabel.Text = "Search Count: 0"
+	$global:SearchCountTracker = 0
 	$searchText = $searchBox.Text
-    $listbox.Items.Clear()
+	$global:VirtualList = @()
+	$virtualListView.Invalidate()
 	Update-ItemCountLabel
-    #$listbox.Size = New-Object System.Drawing.Size(340, 200)
-	#$form.Size = New-Object System.Drawing.Size(400, 200)
-	#Remove-Item $resultFile -ErrorAction Ignore
     Remove-Item "GUIoutput.txt" -ErrorAction Ignore
 
     $global:drives = Get-PSDrive -PSProvider FileSystem
@@ -369,7 +369,6 @@ function run-search {
         
     }
 	$lua = "SearchAgent.exe" 
-	#taskkill /F /IM $lua
 	Stop-Search
 
 	foreach ($drive in $drives) {
@@ -377,7 +376,7 @@ function run-search {
 		$arg = "-b"
 		Out-File -FilePath "GUIoutput.txt" -InputObject ("$searchText`n"+$drive.Root.ToString()) -Encoding ascii -Append
 	
-		if (Test-Path "README.md") {
+		if (Test-Path -LiteralPath "README.md") {
 			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath, $arg -RedirectStandardError "error.txt" -PassThru
 		} else {
 			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath, $arg -RedirectStandardError "error.txt" -PassThru -WindowStyle Hidden
@@ -385,7 +384,7 @@ function run-search {
 		$driveLetter = $drive.Root.Substring(0, 1)
 		 $runningProcesses[$driveLetter] = $process
 	
-		while (Test-Path "GUIoutput.txt") {
+		while (Test-PathWithErrorHandling "GUIoutput.txt") {
 			Start-Sleep -Milliseconds 1
 		}
 	}
@@ -393,100 +392,104 @@ function run-search {
     $timer.Start()
 }
 
-function Invoke-LuaSearch {
-    param([string]$searchText, [string]$drive)
 
-    
-    
-    #$output = & $lua $luaScriptPath $searchText $drive
-	
-}
-$runningProcesses = @{} # Create an empty list to store the running processes
+$runningProcesses = @{}
 $drives = Get-PSDrive -PSProvider FileSystem
-$button.Add_Click({
+$searchButton.Add_Click({
     run-search
 })
 function IsProcessRunning {
-    param([string]$driveLetter)
+	param([string]$driveLetter)
 
-    
-    # Find the process associated with the drive letter
 	$process = $runningProcesses[$driveLetter]
 
-    if ($process -ne $null) {
-        # Check if the process is still running
-        try {
-            $runningProcess = Get-Process -Id $process.Id -ErrorAction Stop
-            return $true
-        }
-        catch {
-            return $false
-        }
-    }
+	if ($process -ne $null) {
+		try {
+			$runningProcess = Get-Process -Id $process.Id -ErrorAction Stop
+			return $true
+		}
+		catch {
+			return $false
+		}
+	}
 
-    return $false
+	return $false
 }
 
-# $drive.Root
 
+$lastLineRead = @{}
 $timer.Add_Tick({
     $MadeChange = $false
-	$searchCount = 0
+    $searchCount = 0
+    
+	
 	foreach ($drive in $drives) {
         $driveLetter = $drive.Root.Substring(0, 1)
-		$isRunning = IsProcessRunning -driveLetter $driveLetter
+        $isRunning = IsProcessRunning -driveLetter $driveLetter
 
         $resultFile = "$driveLetter" + "results.txt"
         $statsFile = "$driveLetter" + "stats.txt"
-		if (Test-Path $statsFile) {
-			$SearchStats = Load-Options -Filename $statsFile
-			$searchCount += $SearchStats["searchcount"]
-		}
-		if (Test-Path $resultFile) {
+        if (Test-Path -LiteralPath $statsFile) {
+            $SearchStats = Load-Options -Filename $statsFile
+            $searchCount += $SearchStats["searchcount"]
+        }
+        if (Test-Path -LiteralPath $resultFile) {
             $NoError = $true
-			$content = Get-Content $resultFile -ErrorAction Ignore
-            $content | ForEach-Object {
-                if (-not $listbox.Items.Contains($_)) {
-                    if ( Test-Path $_ ) {
-						$listbox.Items.Add($_)
-						$MadeChange = $true
-					} else {
-						$NoError = $false
-					}
-					
-                }
+            if (-not $lastLineRead.ContainsKey($driveLetter)) {
+                $lastLineRead[$driveLetter] = 0
             }
-			if ($NoError -and (-Not $isRunning)) {
-				Remove-Item $resultFile
+            $content = Get-Content $resultFile -ErrorAction Ignore | Select-Object -Skip $lastLineRead[$driveLetter]
+            $lineNumber = $lastLineRead[$driveLetter]
+            $startTime = Get-Date
+            
+			$content | ForEach-Object {
+				$lineNumber++	
+				$global:VirtualList += $_
+            }
+			if ($global:VirtualList.Count -ne $global:ResultsCount) {
+				$global:ResultsCount = $global:VirtualList.Count 
+				$MadeChange = $true 
 			}
 			
+            $lastLineRead[$driveLetter] = $lineNumber
+            if (-Not $isRunning) {
+                Remove-Item $resultFile
+            }
         }
     }
-	if ($MadeChange) {
-		#Resize-ListBoxWidthBasedOnLongestItem -listBoxControl $listbox
-		Update-ItemCountLabel
-		$timer.Interval = 1000
-		Update-Sort
+    if ($MadeChange) {
+        Update-ItemCountLabel
+        $timer.Interval = 1000
+        Update-Sort
+        $virtualListView.Invalidate()
+    }
+	if ($global:SearchCountTracker -lt $searchCount) {
+		$global:SearchCountTracker = $searchCount
 	}
-	$searchCountLabel.Text = "Search Count: " + (Add-ThousandsSeparator -Number $searchCount)
-	Update-ProcessCountLabel
-	
+    $searchCountLabel.Text = "Search Count: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker)
+    Update-ProcessCountLabel
 })
+
 Update-ItemCountLabel
 
-$listbox.Add_MouseDoubleClick({
-    if ($listbox.SelectedIndex -ge 0) {
-        $selectedPath = $listbox.SelectedItem
-       Write-Host $selectedPath
-	   explorer.exe "/select,`"$selectedPath`""
+
+$virtualListView_MouseDoubleClick = {
+    if ($virtualListView.SelectedIndices.Count -gt 0) {
+        $selectedIndex = $virtualListView.SelectedIndices[0]
+        $selectedDirectory = $global:VirtualList[$selectedIndex]
+		Write-Host $selectedDirectory
+        Start-Process "explorer.exe" -ArgumentList "/select,`"$selectedDirectory`""
     }
-})
+	
+}
+
+$virtualListView.add_MouseDoubleClick($virtualListView_MouseDoubleClick)
 $form.Add_FormClosing({
 	$timer.Stop()
 	$lua = "SearchAgent.exe" 
-	#taskkill /F /IM $lua
 	Stop-Search
 })
 
 $form.ShowDialog()
 $timer.Stop()
+$timer.Dispose()

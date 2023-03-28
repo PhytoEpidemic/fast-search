@@ -1,6 +1,7 @@
 In the search box, type the keywords or wildcards you want to include or exclude in your search.
-To include a word, simply type it as is.
-To exclude a word, add a '-' in front of it (e.g., -cat).
+	To include a keyword, simply type it as is.
+	To exclude a keyword, add a '-' in front of it (e.g., -cat).
+
 Use Windows search wildcards for more flexibility:
-* (asterisk) matches any sequence of characters.
-? (question mark) matches any single character.
+	* (asterisk) matches any sequence of characters.
+	? (question mark) matches any single character.

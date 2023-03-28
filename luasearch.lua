@@ -87,6 +87,13 @@ local function tick()
 	end
 	return false
 end
+
+local function updateStats(driveletter,searchcount)
+	local stats = io.open(driveletter .. "stats.txt", "w")
+	stats:write("searchcount="..tostring(searchcount))
+	stats:close()
+end
+
 function search_files_and_folders(searchText, drive)
     local driveletter = drive:sub(1,1)
 	os.remove(driveletter .. "results.txt")
@@ -113,9 +120,8 @@ function search_files_and_folders(searchText, drive)
                 if attr then
                     searchcount = searchcount+1
 					if ontick then
-						local stats = io.open(driveletter .. "stats.txt", "w")
-						stats:write("searchcount="..tostring(searchcount))
-						stats:close()
+						updateStats(driveletter,searchcount)
+						
 					end
 					
 					if attr.mode == 'directory' then
@@ -134,7 +140,7 @@ function search_files_and_folders(searchText, drive)
     end
 	
     search(drive)
-    
+    updateStats(driveletter,searchcount)
 end
 args = extract_first_two_lines("GUIoutput.txt")
 os.remove("GUIoutput.txt")
