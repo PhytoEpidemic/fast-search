@@ -1,4 +1,5 @@
 Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.Application]::EnableVisualStyles()
 Function MakeToolTip ()
 {
 	
@@ -22,7 +23,7 @@ function Test-PathWithErrorHandling {
     }
 }
 
-function Load-Options {
+function LoadOptions {
     param (
         [string]$Filename
     )
@@ -48,7 +49,7 @@ function Load-Options {
     return $options
 }
 
-function Sort-ListBoxAlphabetically ($directories, $ascending) {
+function SortListBoxAlphabetically ($directories, $ascending) {
     if ($ascending) {
         return $directories | Sort-Object
     } else {
@@ -56,7 +57,7 @@ function Sort-ListBoxAlphabetically ($directories, $ascending) {
     }
 }
 
-function Sort-ListBoxByLastChild ($directories, $ascending) {
+function SortListBoxByLastChild ($directories, $ascending) {
     if ($ascending) {
         return $directories | Sort-Object -Property { Split-Path $_ -Leaf }
     } else {
@@ -64,7 +65,7 @@ function Sort-ListBoxByLastChild ($directories, $ascending) {
     }
 }
 
-function Sort-ListBoxByType ($directories, $ascending) {
+function SortListBoxByType ($directories, $ascending) {
 	if ($ascending) {
 		return $directories | Sort-Object -Property {
 			if ($_ -match '\.') {
@@ -116,27 +117,52 @@ $dropdown.SelectedIndex = 0
 $VirtualList = @()
 function Update-Sort {
 	if ($global:VirtualList.Count -gt 1) {
+		$selectedItemValue = $null
+		if ($virtualListView.SelectedIndices.Count -gt 0) {
+			$selectedIndex = $virtualListView.SelectedIndices[0]
+			$selectedItemValue = $global:VirtualList[$selectedIndex]
+		}
+	
+		# Sort the items in the VirtualList
+		
 		switch ($dropdown.SelectedItem) {
 			"Drive" {
-					$sortedDirectories = Sort-ListBoxAlphabetically $global:VirtualList $AccedingSort
+					$sortedDirectories = SortListBoxAlphabetically $global:VirtualList $AccedingSort
 					$virtualListView.VirtualListSize = $sortedDirectories.Count
 					$global:VirtualList = @()
 					$virtualListView.Invalidate()
 					$global:VirtualList = $sortedDirectories
 			}
 				"Name" {
-				$sortedDirectories = Sort-ListBoxByLastChild $global:VirtualList $AccedingSort
+				$sortedDirectories = SortListBoxByLastChild $global:VirtualList $AccedingSort
 					$virtualListView.VirtualListSize = $sortedDirectories.Count
 					$global:VirtualList = @()
 					$virtualListView.Invalidate()
 					$global:VirtualList = $sortedDirectories
 			}
 			"Type" {
-				$sortedDirectories = Sort-ListBoxByType $global:VirtualList $AccedingSort
+				$sortedDirectories = SortListBoxByType $global:VirtualList $AccedingSort
 					$virtualListView.VirtualListSize = $sortedDirectories.Count
 					$global:VirtualList = @()
 					$virtualListView.Invalidate()
 					$global:VirtualList = $sortedDirectories
+			}
+		}
+
+		# Find the new index of the previously selected item and update the selectedIndex
+		if ($selectedItemValue -ne $null) {
+			$newIndex = -1
+			for ($i = 0; $i -lt $global:VirtualList.Count; $i++) {
+				if ($global:VirtualList[$i] -eq $selectedItemValue) {
+					$newIndex = $i
+					break
+				}
+			}
+	
+			if ($newIndex -ge 0) {
+				$virtualListView.SelectedIndices.Clear()
+				$virtualListView.SelectedIndices.Add($newIndex)
+				$virtualListView.EnsureVisible($newIndex)
 			}
 		}
 	}
@@ -180,7 +206,7 @@ $toolTip.SetToolTip($searchBox,(Get-Content "searchhelp.txt" -Raw))
 
 $textBox_KeyDown = {
     if ($_.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
-        run-search
+        runsearch
     }
 }
 
@@ -266,9 +292,59 @@ function Update-ItemCountLabel {
 }
 Update-ProcessCountLabel
 
+function Get-DirectorySize {
+    param (
+        [string]$DirectoryPath
+    )
+
+    if (Test-Path $DirectoryPath) {
+        $directoryInfo = Get-ChildItem -Recurse -Force -LiteralPath $DirectoryPath | Where-Object { -not $_.PSIsContainer }
+        $totalSize = ($directoryInfo | Measure-Object -Property Length -Sum).Sum
+        return $totalSize
+    } else {
+        Write-Host "The specified directory does not exist."
+        return $null
+    }
+}
+
+function Get-FileSize {
+    param (
+        [string]$FilePath
+    )
+
+    if (Test-Path $FilePath) {
+        $itemInfo = Get-Item -LiteralPath $FilePath
+        if (-not $itemInfo.PSIsContainer) {
+            $fileSize = $itemInfo.Length
+            return $fileSize
+        } else {
+            Write-Host "The specified path points to a folder, not a file."
+            return $null
+        }
+    } else {
+        Write-Host "The specified file does not exist."
+        return $null
+    }
+}
+
+function ConvertTo-ReadableSize {
+    param (
+        [int64]$Bytes
+    )
+
+    $units = "B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"
+    $index = 0
+
+    while ($Bytes -ge 1024 -and $index -lt ($units.Length - 1)) {
+        $Bytes /= 1024
+        $index++
+    }
+
+    return "{0:N2} {1}" -f $Bytes, $units[$index]
+}
 
 
-
+$SizeList = @{}
 $virtualListView = New-Object System.Windows.Forms.ListView
 $virtualListView.Location = New-Object System.Drawing.Point(20, 100)
 $virtualListView.Size = New-Object System.Drawing.Size(330, 150)
@@ -277,33 +353,47 @@ $virtualListView.Height = $form.ClientSize.Height - (50 + $virtualListView.Locat
 $virtualListView.View = [System.Windows.Forms.View]::Details
 $virtualListView.VirtualMode = $true
 $virtualListView.VirtualListSize = 1
+$virtualListView.MultiSelect = $false
 
-$columnHeader = New-Object System.Windows.Forms.ColumnHeader
-$columnHeader.Text = "Location"
-$columnHeader.Width = 1920
+$locationColumnHeader = New-Object System.Windows.Forms.ColumnHeader
+$locationColumnHeader.Text = "Location"
+$locationColumnHeader.Width = 280
+
+$sizeColumnHeader = New-Object System.Windows.Forms.ColumnHeader
+$sizeColumnHeader.Text = "Size"
+$sizeColumnHeader.Width = 80
+
+$virtualListView.Columns.AddRange(@($locationColumnHeader, $sizeColumnHeader))
 
 $virtualListView.add_ColumnClick({
-    param($sender, $e)
+    param($senderr, $e)
 
     $clickedColumn = $e.Column
-	if ($clickedColumn -eq 0) {
-		
-		$global:AccedingSort = $AccedingSort -eq $false
-		Update-Sort
-		$virtualListView.Invalidate()
-	}
-    
+    if ($clickedColumn -eq 0) {
+        $global:AccedingSort = $AccedingSort -eq $false
+        Update-Sort
+        $virtualListView.Invalidate()
+    }
 })
-$virtualListView.Columns.Add($columnHeader)
 
 $virtualListView_RetrieveVirtualItem = {
     $itemIndex = $_.ItemIndex
-    $_.Item = New-Object System.Windows.Forms.ListViewItem($global:VirtualList[$itemIndex])
+    $directoryPath = $global:VirtualList[$itemIndex]
+	$item = New-Object System.Windows.Forms.ListViewItem($directoryPath)
+    if (-not $global:SizeList.ContainsKey($directoryPath)) {
+		$directorySizeInBytes = Get-FileSize -FilePath $directoryPath
+		$readableSize = ConvertTo-ReadableSize -Bytes $directorySizeInBytes
+		$global:SizeList[$directoryPath] = $readableSize
+	}
+	
+	$item.SubItems.Add($global:SizeList[$directoryPath]) # Replace "Size_Value" with the appropriate size value for each item
+    $_.Item = $item
 }
 
 $virtualListView.add_RetrieveVirtualItem($virtualListView_RetrieveVirtualItem)
 
 $form.Controls.Add($virtualListView)
+
 
 
 
@@ -339,7 +429,7 @@ function Stop-Search {
 }
 
 
-function run-search {
+function runsearch {
 
 	if ($searchBox.Text.Length -eq 1) {
 		$messageBoxResult = [System.Windows.Forms.MessageBox]::Show("The search text is only one character. This can cause the program to freeze for long periods of time.`n`n Are you sure you want to continue?", "Confirm", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
@@ -396,14 +486,14 @@ function run-search {
 $runningProcesses = @{}
 $drives = Get-PSDrive -PSProvider FileSystem
 $searchButton.Add_Click({
-    run-search
+    runsearch
 })
 function IsProcessRunning {
 	param([string]$driveLetter)
 
 	$process = $runningProcesses[$driveLetter]
 
-	if ($process -ne $null) {
+	if ($null -ne $process) {
 		try {
 			$runningProcess = Get-Process -Id $process.Id -ErrorAction Stop
 			return $true
@@ -430,17 +520,15 @@ $timer.Add_Tick({
         $resultFile = "$driveLetter" + "results.txt"
         $statsFile = "$driveLetter" + "stats.txt"
         if (Test-Path -LiteralPath $statsFile) {
-            $SearchStats = Load-Options -Filename $statsFile
+            $SearchStats = LoadOptions -Filename $statsFile
             $searchCount += $SearchStats["searchcount"]
         }
         if (Test-Path -LiteralPath $resultFile) {
-            $NoError = $true
-            if (-not $lastLineRead.ContainsKey($driveLetter)) {
-                $lastLineRead[$driveLetter] = 0
+            if (-not $global:lastLineRead.ContainsKey($driveLetter)) {
+                $global:lastLineRead[$driveLetter] = 0
             }
-            $content = Get-Content $resultFile -ErrorAction Ignore | Select-Object -Skip $lastLineRead[$driveLetter]
-            $lineNumber = $lastLineRead[$driveLetter]
-            $startTime = Get-Date
+            $content = Get-Content $resultFile -ErrorAction Ignore | Select-Object -Skip $global:lastLineRead[$driveLetter]
+            $lineNumber = $global:lastLineRead[$driveLetter]
             
 			$content | ForEach-Object {
 				$lineNumber++	
@@ -451,7 +539,7 @@ $timer.Add_Tick({
 				$MadeChange = $true 
 			}
 			
-            $lastLineRead[$driveLetter] = $lineNumber
+            $global:lastLineRead[$driveLetter] = $lineNumber
             if (-Not $isRunning) {
                 Remove-Item $resultFile
             }
@@ -460,7 +548,11 @@ $timer.Add_Tick({
     if ($MadeChange) {
         Update-ItemCountLabel
         $timer.Interval = 1000
-        Update-Sort
+		# Store the value of the currently selected item
+		# Sort the items in the VirtualList
+		Update-Sort
+	
+        
         $virtualListView.Invalidate()
     }
 	if ($global:SearchCountTracker -lt $searchCount) {
@@ -472,6 +564,23 @@ $timer.Add_Tick({
 
 Update-ItemCountLabel
 
+$virtualListView_SelectedIndexChanged = {
+    if ($virtualListView.SelectedIndices.Count -gt 0) {
+        $selectedIndex = $virtualListView.SelectedIndices[0]
+        $selectedDirectory = $global:VirtualList[$selectedIndex]
+        $lastLeaf = Split-Path -Path $selectedDirectory -Leaf
+        
+        $searchMenuItem.Text = "Search `"" + $lastLeaf + "`""
+		$openInExplorerMenuItem.Enabled = $true
+		$searchMenuItem.Enabled = $true
+    } else {
+		$openInExplorerMenuItem.Enabled = $false
+		$searchMenuItem.Enabled = $false
+		$searchMenuItem.Text = "Search"
+	}
+}
+
+$virtualListView.add_SelectedIndexChanged($virtualListView_SelectedIndexChanged)
 
 $virtualListView_MouseDoubleClick = {
     if ($virtualListView.SelectedIndices.Count -gt 0) {
@@ -482,11 +591,46 @@ $virtualListView_MouseDoubleClick = {
     }
 	
 }
+# Create a context menu strip
+$contextMenuStrip = New-Object System.Windows.Forms.ContextMenuStrip
+
+# Create the 'Open in Explorer' menu item
+$openInExplorerMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem("Open in Explorer")
+$openInExplorerMenuItem.Enabled = $false
+
+$openInExplorerMenuItem.add_Click({
+    if ($virtualListView.SelectedIndices.Count -gt 0) {
+        $selectedIndex = $virtualListView.SelectedIndices[0]
+        $selectedDirectory = $global:VirtualList[$selectedIndex]
+        Write-Host $selectedDirectory
+        Start-Process "explorer.exe" -ArgumentList "/select,`"$selectedDirectory`""
+    }
+})
+
+# Create the 'Search [last leaf]' menu item
+$searchMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem("Search")
+$searchMenuItem.Enabled = $false
+$searchMenuItem.add_Click({
+    if ($virtualListView.SelectedIndices.Count -gt 0) {
+        $selectedIndex = $virtualListView.SelectedIndices[0]
+        $selectedDirectory = $global:VirtualList[$selectedIndex]
+        $lastLeaf = Split-Path -Path $selectedDirectory -Leaf
+        $searchBox.Text = $lastLeaf
+        runsearch
+    }
+})
+
+# Add menu items to the context menu strip
+$contextMenuStrip.Items.Add($openInExplorerMenuItem)
+$contextMenuStrip.Items.Add($searchMenuItem)
+
+# Assign the context menu strip to the virtualListView
+$virtualListView.ContextMenuStrip = $contextMenuStrip
 
 $virtualListView.add_MouseDoubleClick($virtualListView_MouseDoubleClick)
 $form.Add_FormClosing({
 	$timer.Stop()
-	$lua = "SearchAgent.exe" 
+	$timer.Dispose()
 	Stop-Search
 })
 
