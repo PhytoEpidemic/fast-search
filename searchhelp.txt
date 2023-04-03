@@ -1,6 +1,8 @@
 In the search box, type the keywords or wildcards you want to include or exclude in your search.
 	To include a keyword, simply type it as is.
 	To exclude a keyword, add a '-' in front of it (e.g., -cat).
+	To match a file or folder name exactly put quotation marks around it (e.g., 'dog').
+	To search for names with spaces in them use a : to represent spaces (e.g. New:folder).
 
 Use Windows search wildcards for more flexibility:
 	* (asterisk) matches any sequence of characters.

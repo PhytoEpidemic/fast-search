@@ -1,6 +1,27 @@
 local lfs = require('lfs')
 local st = os.time()
 
+
+local function loadOptions(filename)
+	local options = {}
+
+	for line in io.lines(filename) do
+		local label, value = line:match("^(.-)=(.-)$")
+		
+		if label then
+			
+			if value:lower() == "true" or value:lower() == "false" then
+				value = value:lower() == "true"
+			end
+			
+			options[label] = value
+		end
+		
+	end
+	
+	return options
+end
+
 function split_by_spaces(input_string)
     local result = {}
     for word in string.gmatch(input_string, "%S+") do
@@ -9,6 +30,15 @@ function split_by_spaces(input_string)
     return result
 end
 
+function remove_enclosed_quotes(str)
+    local matched = str:match('^"(.*)"$') or str:match("^'(.-)'$")
+    
+    if matched then
+        return matched
+    else
+        return false
+    end
+end
 
 function windowsToLuaPattern(windowsPattern)
     -- Escape Lua magic characters
@@ -24,25 +54,30 @@ end
 
 function contains_all_words(input_string, words_table, negatives)
     for i, word in ipairs(words_table) do
+        if not Config.CaseSensitive then
+            input_string = input_string:lower()
+        end
         local found_match = string.match(input_string, word)
 		if negatives[i] and found_match then
 			return false
-		elseif not negatives[i] and not found_match then
+		elseif not negatives[i] and (not found_match) and Config.ContainesAll then
 			return false
+        elseif found_match and (not Config.ContainesAll) then
+            return true
 		end
     end
-    return true
+    return Config.ContainesAll
 end
 
 
-function extract_first_two_lines(file_path)
+function extract_lines(file_path,numlines)
     local extracted_lines = {}
     local remaining_lines = {}
-
+    numlines = numlines or 1
     -- Read file content
     local i = 1
     for line in io.lines(file_path) do
-        if i <= 2 then
+        if i <= numlines then
             table.insert(extracted_lines, line)
         else
             table.insert(remaining_lines, line)
@@ -108,6 +143,17 @@ function search_files_and_folders(searchText, drive)
 			negatives[i] = false
 		end
 		search_table[i] = windowsToLuaPattern(search_table[i])
+		
+        if not Config.CaseSensitive then
+            search_table[i] = search_table[i]:lower()
+        end
+        
+        local ExactMatch = remove_enclosed_quotes(search_table[i])
+        if ExactMatch  then
+            search_table[i] = "^" .. ExactMatch.. "$"
+        end
+        search_table[i] = string.gsub(search_table[i], ":", "%%s")
+        print(search_table[i])
 	end
 	local searchcount = 0
 	function search(path)
@@ -142,11 +188,11 @@ function search_files_and_folders(searchText, drive)
     search(drive)
     updateStats(driveletter,searchcount)
 end
-args = extract_first_two_lines("GUIoutput.txt")
-os.remove("GUIoutput.txt")
-local searchText = args[1]
-local drive = args[2]
 
-search_files_and_folders(searchText, drive)
+
+Config = loadOptions("SearchOptions.txt")
+local drive = extract_lines("GUIoutput.txt",1)[1]
+os.remove("GUIoutput.txt")
+search_files_and_folders(Config.SearchText, drive)
 print(os.time()-st)
 print((os.time()-st)/60)

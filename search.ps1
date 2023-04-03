@@ -150,7 +150,7 @@ function Update-Sort {
 		}
 
 		# Find the new index of the previously selected item and update the selectedIndex
-		if ($selectedItemValue -ne $null) {
+		if ( $null -ne $selectedItemValue ) {
 			$newIndex = -1
 			for ($i = 0; $i -lt $global:VirtualList.Count; $i++) {
 				if ($global:VirtualList[$i] -eq $selectedItemValue) {
@@ -176,8 +176,8 @@ $dropdown.Add_SelectedIndexChanged({
 # Initialize form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Power Search'
-$form.Size = New-Object System.Drawing.Size(400, 400)
-$minWidth = 400
+$form.Size = New-Object System.Drawing.Size(600, 400)
+$minWidth = 450
 $minHeight = 300
 $form.MinimumSize = New-Object System.Drawing.Size($minWidth, $minHeight)
 $form.StartPosition = 'CenterScreen'
@@ -232,8 +232,20 @@ $form.Controls.Add($searchBox)
 $searchButton = New-Object System.Windows.Forms.Button
 $searchButton.Text = 'Search'
 $searchButton.Location = New-Object System.Drawing.Point(270, 40)
-$searchButton.AutoSize = $true
+#$searchButton.AutoSize = $true
+$searchButton.Size = New-Object System.Drawing.Size(120, 40)
 $form.Controls.Add($searchButton)
+$CaseSensitiveCheckBox = New-Object System.Windows.Forms.CheckBox
+$CaseSensitiveCheckBox.Text = "Case Sensitive"
+$CaseSensitiveCheckBox.Checked = $true
+$toolTip.SetToolTip($CaseSensitiveCheckBox, "Make the search sensitve to UPPER and lower case letters")
+$form.Controls.Add($CaseSensitiveCheckBox)
+$ContainesAllCheckBox = New-Object System.Windows.Forms.CheckBox
+$ContainesAllCheckBox.Text = "Containes All"
+$ContainesAllCheckBox.Checked = $true
+$toolTip.SetToolTip($ContainesAllCheckBox, "Search only for files or folders that contain every key word in its name.")
+
+$form.Controls.Add($ContainesAllCheckBox)
 
 
 
@@ -348,8 +360,6 @@ $SizeList = @{}
 $virtualListView = New-Object System.Windows.Forms.ListView
 $virtualListView.Location = New-Object System.Drawing.Point(20, 100)
 $virtualListView.Size = New-Object System.Drawing.Size(330, 150)
-$virtualListView.Width = $form.ClientSize.Width - 50
-$virtualListView.Height = $form.ClientSize.Height - (50 + $virtualListView.Location.Y)
 $virtualListView.View = [System.Windows.Forms.View]::Details
 $virtualListView.VirtualMode = $true
 $virtualListView.VirtualListSize = 1
@@ -357,7 +367,7 @@ $virtualListView.MultiSelect = $false
 
 $locationColumnHeader = New-Object System.Windows.Forms.ColumnHeader
 $locationColumnHeader.Text = "Location"
-$locationColumnHeader.Width = 280
+$locationColumnHeader.Width = 435
 
 $sizeColumnHeader = New-Object System.Windows.Forms.ColumnHeader
 $sizeColumnHeader.Text = "Size"
@@ -406,11 +416,68 @@ function SetColors($form){
 	$form.ForeColor = if (-Not $isLightMode) {[System.Drawing.SystemColors]::Control} else {[System.Drawing.SystemColors]::WindowText}
 }
 SetColors($form)
+function Resize-Control {
+    param (
+        [System.Windows.Forms.Form]$Form,
+        [System.Windows.Forms.Control]$Control,
+        [int]$WidthOffset = 50,
+        [int]$HeightOffset = 50
+    )
+
+    if ($WidthOffset -ne 0) {
+        $Control.Width = $Form.ClientSize.Width - ($WidthOffset + $Control.Location.X)
+    }
+
+    if ($HeightOffset -ne 0) {
+        $Control.Height = $Form.ClientSize.Height - ($HeightOffset + $Control.Location.Y)
+    }
+}
+
+function Set-ControlPosition {
+    param (
+        [System.Windows.Forms.Form]$Form,
+        [System.Windows.Forms.Control]$Control,
+        [string]$Edge,
+        [int]$XOffset = 0,
+        [int]$YOffset = 0
+    )
+
+    switch ($Edge) {
+        'TopLeft' {
+            $Control.Location = New-Object System.Drawing.Point($XOffset, $YOffset)
+        }
+        'TopRight' {
+            $Control.Location = New-Object System.Drawing.Point(($Form.ClientSize.Width - $Control.Width - $XOffset), $YOffset)
+        }
+        'BottomLeft' {
+            $Control.Location = New-Object System.Drawing.Point($XOffset, ($Form.ClientSize.Height - $Control.Height - $YOffset))
+        }
+        'BottomRight' {
+            $Control.Location = New-Object System.Drawing.Point(($Form.ClientSize.Width - $Control.Width - $XOffset), ($Form.ClientSize.Height - $Control.Height - $YOffset))
+        }
+        default {
+            throw "Invalid edge specified. Use 'TopLeft', 'TopRight', 'BottomLeft', or 'BottomRight'."
+        }
+    }
+}
+
+function setControlPosAndSize {
+	Resize-Control -Form $form -Control $virtualListView -WidthOffset 50 -HeightOffset 50
+	Resize-Control -Form $form -Control $searchBox -WidthOffset 160 -HeightOffset 0
+	Set-ControlPosition -Form $form -Control $CaseSensitiveCheckBox -Edge 'TopRight' -XOffset 35 -YOffset 50
+	Set-ControlPosition -Form $form -Control $ContainesAllCheckBox -Edge 'TopRight' -XOffset 35 -YOffset 75
+	Set-ControlPosition -Form $form -Control $searchButton -Edge 'TopRight' -XOffset 20 -YOffset 10
+	Set-ControlPosition -Form $form -Control $dropdown -Edge 'BottomRight' -XOffset 50 -YOffset 20
+	Set-ControlPosition -Form $form -Control $SBlabel -Edge 'BottomRight' -XOffset 95 -YOffset 15
+}
 
 
+
+setControlPosAndSize
 $form.Add_Resize({
-	$virtualListView.Width = $form.ClientSize.Width - 50
-    $virtualListView.Height = $form.ClientSize.Height - (50 + $virtualListView.Location.Y)
+	setControlPosAndSize
+	
+
 })
 
 $timer = New-Object System.Windows.Forms.Timer
@@ -440,10 +507,13 @@ function runsearch {
 		return
 	}
 
-
+	$global:SearchSpeed = 0
+	$global:SearchCountOffset = 0
+	$global:ProcessCount = 0
+	$global:SearchStartTime = Get-Date
 	$global:lastLineRead = @{}
 	$timer.Stop()
-	$timer.Interval = 100
+	$timer.Interval = 500
 	$global:ResultsCount = 0
 	$searchCountLabel.Text = "Search Count: 0"
 	$global:SearchCountTracker = 0
@@ -452,6 +522,7 @@ function runsearch {
 	$virtualListView.Invalidate()
 	Update-ItemCountLabel
     Remove-Item "GUIoutput.txt" -ErrorAction Ignore
+    Remove-Item "SearchOptions.txt" -ErrorAction Ignore
 
     $global:drives = Get-PSDrive -PSProvider FileSystem
     
@@ -460,11 +531,18 @@ function runsearch {
     }
 	$lua = "SearchAgent.exe" 
 	Stop-Search
+	
+	Out-File -FilePath "SearchOptions.txt" -InputObject (
+		"SearchText=$searchText`n" +
+		"CaseSensitive=" + $CaseSensitiveCheckBox.Checked.ToString() + "`n" +
+		"ContainesAll=" + $ContainesAllCheckBox.Checked.ToString() + "`n"
+	) -Encoding ascii -Append
 
 	foreach ($drive in $drives) {
 		$luaScriptPath = "luasearch.lua"
 		$arg = "-b"
-		Out-File -FilePath "GUIoutput.txt" -InputObject ("$searchText`n"+$drive.Root.ToString()) -Encoding ascii -Append
+		Out-File -FilePath "GUIoutput.txt" -InputObject ($drive.Root.ToString()) -Encoding ascii -Append
+		
 	
 		if (Test-Path -LiteralPath "README.md") {
 			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath, $arg -RedirectStandardError "error.txt" -PassThru
@@ -506,17 +584,41 @@ function IsProcessRunning {
 	return $false
 }
 
+function Get-DividedValueByElapsedTime {
+    param (
+        [DateTime]$StartTime,
+        [double]$Number
+    )
 
+	if ($StartTime -eq (Get-Date)) {
+		return 0
+	}
+    $elapsedTime = (Get-Date) - $StartTime
+    $elapsedSeconds = $elapsedTime.TotalSeconds
+    $result = $Number / $elapsedSeconds
+
+    return $result
+}
+
+
+
+$SearchSpeed = 0
+$SearchCountOffset = 0
+$ProcessCount = 0
+$SearchStartTime = Get-Date
 $lastLineRead = @{}
 $timer.Add_Tick({
     $MadeChange = $false
     $searchCount = 0
-    
-	
+    $SearchIsRunning = $false
+	$RunningSearches = 0
 	foreach ($drive in $drives) {
         $driveLetter = $drive.Root.Substring(0, 1)
         $isRunning = IsProcessRunning -driveLetter $driveLetter
-
+		if ($isRunning) {
+			$RunningSearches += 1
+		}
+		$SearchIsRunning = $isRunning -or $SearchIsRunning
         $resultFile = "$driveLetter" + "results.txt"
         $statsFile = "$driveLetter" + "stats.txt"
         if (Test-Path -LiteralPath $statsFile) {
@@ -555,10 +657,32 @@ $timer.Add_Tick({
         
         $virtualListView.Invalidate()
     }
-	if ($global:SearchCountTracker -lt $searchCount) {
-		$global:SearchCountTracker = $searchCount
+	$global:SearchCountTracker = [Math]::max($searchCount, $global:SearchCountTracker)
+	if ($global:ProcessCount -ne $RunningSearches) {
+		$global:ProcessCount = $RunningSearches
+		
+		$global:SearchStartTime = Get-Date
+		$global:SearchCountOffset = $global:SearchCountTracker
 	}
-    $searchCountLabel.Text = "Search Count: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker)
+
+	
+	if ($SearchIsRunning) {
+		$NewSearchSpeed = Get-DividedValueByElapsedTime -StartTime $global:SearchStartTime -Number ($global:SearchCountTracker - $global:SearchCountOffset)
+		if ($NewSearchSpeed -gt 0) {
+			$global:SearchSpeed = [Math]::Round($NewSearchSpeed)
+		}
+		
+		
+	} else {
+		$global:SearchSpeed = 0
+	}
+    if ($global:SearchSpeed -gt 0) {
+		$searchCountLabel.Text = "Search Count: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker) + "   f/s: " + (Add-ThousandsSeparator -Number $global:SearchSpeed)
+		
+	} else {
+		$searchCountLabel.Text = "Search Count: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker)
+	}
+	
     Update-ProcessCountLabel
 })
 
