@@ -90,6 +90,69 @@ function SortListBoxByType ($directories, $ascending) {
 		} -Descending
 	}
 }
+function SortBySize {
+    param (
+        [System.Collections.ArrayList]$List,
+        [bool]$Ascending
+    )
+
+    if ($Ascending) {
+        $sortedList = $List | Sort-Object {
+            $data = Get-CachedFileData -FilePath $_
+            $data.Size
+        }
+    } else {
+        $sortedList = $List | Sort-Object {
+            $data = Get-CachedFileData -FilePath $_
+            $data.Size
+        } -Descending
+    }
+
+    return $sortedList
+}
+
+function SortByDateCreated {
+    param (
+        [System.Collections.ArrayList]$List,
+        [bool]$Ascending
+    )
+
+    if ($Ascending) {
+        $sortedList = $List | Sort-Object {
+            $data = Get-CachedFileData -FilePath $_
+            $data.DateCreated
+        }
+    } else {
+        $sortedList = $List | Sort-Object {
+            $data = Get-CachedFileData -FilePath $_
+            $data.DateCreated
+        } -Descending
+    }
+
+    return $sortedList
+}
+
+function SortByDateModified {
+    param (
+        [System.Collections.ArrayList]$List,
+        [bool]$Ascending
+    )
+
+    if ($Ascending) {
+        $sortedList = $List | Sort-Object {
+            $data = Get-CachedFileData -FilePath $_
+            $data.DateModified
+        }
+    } else {
+        $sortedList = $List | Sort-Object {
+            $data = Get-CachedFileData -FilePath $_
+            $data.DateModified
+        } -Descending
+    }
+
+    return $sortedList
+}
+
 
 
 
@@ -111,6 +174,10 @@ $dropdown.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $dropdown.Items.Add("Drive")
 $dropdown.Items.Add("Name")
 $dropdown.Items.Add("Type")
+$dropdown.Items.Add("Size")
+$dropdown.Items.Add("Date Created")
+$dropdown.Items.Add("Date Modified")
+
 
 $dropdown.SelectedIndex = 0
 
@@ -125,30 +192,39 @@ function Update-Sort {
 	
 		# Sort the items in the VirtualList
 		
+		function Update-ListView {
+			param (
+				[System.Collections.ArrayList]$SortedDirectories
+			)
+			$virtualListView.VirtualListSize = $SortedDirectories.Count
+			$global:VirtualList = @()
+			$virtualListView.Invalidate()
+			$global:VirtualList = $SortedDirectories
+		}
+		
+		$sortedDirectories = $global:VirtualList
 		switch ($dropdown.SelectedItem) {
 			"Drive" {
-					$sortedDirectories = SortListBoxAlphabetically $global:VirtualList $AccedingSort
-					$virtualListView.VirtualListSize = $sortedDirectories.Count
-					$global:VirtualList = @()
-					$virtualListView.Invalidate()
-					$global:VirtualList = $sortedDirectories
+				$sortedDirectories = SortListBoxAlphabetically $global:VirtualList $AccedingSort
 			}
-				"Name" {
+			"Name" {
 				$sortedDirectories = SortListBoxByLastChild $global:VirtualList $AccedingSort
-					$virtualListView.VirtualListSize = $sortedDirectories.Count
-					$global:VirtualList = @()
-					$virtualListView.Invalidate()
-					$global:VirtualList = $sortedDirectories
 			}
 			"Type" {
 				$sortedDirectories = SortListBoxByType $global:VirtualList $AccedingSort
-					$virtualListView.VirtualListSize = $sortedDirectories.Count
-					$global:VirtualList = @()
-					$virtualListView.Invalidate()
-					$global:VirtualList = $sortedDirectories
 			}
+			"Size" {
+				$sortedDirectories = SortBySize $global:VirtualList $AccedingSort
+			}
+			"Date Created" {
+				$sortedDirectories = SortByDateCreated $global:VirtualList $AccedingSort
+			}
+			"Date Modified" {
+				$sortedDirectories = SortByDateModified $global:VirtualList $AccedingSort
+			}
+			
 		}
-
+		Update-ListView -SortedDirectories $sortedDirectories
 		# Find the new index of the previously selected item and update the selectedIndex
 		if ( $null -ne $selectedItemValue ) {
 			$newIndex = -1
@@ -176,7 +252,7 @@ $dropdown.Add_SelectedIndexChanged({
 # Initialize form
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Power Search'
-$form.Size = New-Object System.Drawing.Size(600, 400)
+$form.Size = New-Object System.Drawing.Size(800, 400)
 $minWidth = 450
 $minHeight = 300
 $form.MinimumSize = New-Object System.Drawing.Size($minWidth, $minHeight)
@@ -356,7 +432,42 @@ function ConvertTo-ReadableSize {
 }
 
 
-$SizeList = @{}
+$global:FileDataCache = @{}
+
+function Get-CachedFileData {
+    param (
+        [string]$FilePath
+    )
+
+    if ($global:FileDataCache.ContainsKey($FilePath)) {
+        return $global:FileDataCache[$FilePath]
+    } else {
+        $fileItem = Get-Item -LiteralPath $FilePath
+
+        if (Test-Path -LiteralPath $FilePath -PathType Leaf) {
+            $fileData = @{
+                Size = $fileItem.Length
+                DateCreated = $fileItem.CreationTime
+                DateModified = $fileItem.LastWriteTime
+            }
+        } else {
+            $fileData = @{
+                Size = 0
+                DateCreated = $fileItem.CreationTime
+                DateModified = $fileItem.LastWriteTime
+            }
+        }
+
+        $global:FileDataCache[$FilePath] = $fileData
+        return $fileData
+    }
+}
+
+
+
+
+
+
 $virtualListView = New-Object System.Windows.Forms.ListView
 $virtualListView.Location = New-Object System.Drawing.Point(20, 100)
 $virtualListView.Size = New-Object System.Drawing.Size(330, 150)
@@ -365,38 +476,66 @@ $virtualListView.VirtualMode = $true
 $virtualListView.VirtualListSize = 1
 $virtualListView.MultiSelect = $false
 
-$locationColumnHeader = New-Object System.Windows.Forms.ColumnHeader
-$locationColumnHeader.Text = "Location"
-$locationColumnHeader.Width = 435
+function Add-ListViewColumns {
+    param (
+        [System.Windows.Forms.ListView]$ListView,
+        [System.Collections.Generic.List[hashtable]]$Columns
+    )
 
-$sizeColumnHeader = New-Object System.Windows.Forms.ColumnHeader
-$sizeColumnHeader.Text = "Size"
-$sizeColumnHeader.Width = 80
+    $columnHeaders = @()
+    foreach ($column in $Columns) {
+        $columnHeader = New-Object System.Windows.Forms.ColumnHeader
+        $columnHeader.Text = $column["Text"]
+        $columnHeader.Width = $column["Width"]
+        $columnHeaders += $columnHeader
+    }
+    $ListView.Columns.AddRange($columnHeaders)
+}
 
-$virtualListView.Columns.AddRange(@($locationColumnHeader, $sizeColumnHeader))
+# Usage example:
+$columns = [System.Collections.Generic.List[hashtable]]::new()
+$columns.Add(@{"Text" = "Location"; "ToolTip" = "Click to"; "Width" = 410})
+$columns.Add(@{"Text" = "Size"; "Width" = 80})
+$columns.Add(@{"Text" = "Date Created"; "Width" = 110})
+$columns.Add(@{"Text" = "Date Modified"; "Width" = 110})
+
+Add-ListViewColumns -ListView $virtualListView -Columns $columns
+
+
+
+
+
 
 $virtualListView.add_ColumnClick({
     param($senderr, $e)
 
     $clickedColumn = $e.Column
-    if ($clickedColumn -eq 0) {
-        $global:AccedingSort = $AccedingSort -eq $false
-        Update-Sort
-        $virtualListView.Invalidate()
-    }
+    
+	if ($clickedColumn -gt 0) {
+        if (($clickedColumn + 2) -eq $dropdown.SelectedIndex) {
+			$global:AccedingSort = $AccedingSort -eq $false
+		} else {
+			$dropdown.SelectedIndex = ($clickedColumn + 2)
+		} 
+    } else {
+		$global:AccedingSort = $AccedingSort -eq $false
+	}
+	Update-Sort
+	$virtualListView.Invalidate()
 })
 
 $virtualListView_RetrieveVirtualItem = {
     $itemIndex = $_.ItemIndex
     $directoryPath = $global:VirtualList[$itemIndex]
 	$item = New-Object System.Windows.Forms.ListViewItem($directoryPath)
-    if (-not $global:SizeList.ContainsKey($directoryPath)) {
-		$directorySizeInBytes = Get-FileSize -FilePath $directoryPath
-		$readableSize = ConvertTo-ReadableSize -Bytes $directorySizeInBytes
-		$global:SizeList[$directoryPath] = $readableSize
-	}
-	
-	$item.SubItems.Add($global:SizeList[$directoryPath]) # Replace "Size_Value" with the appropriate size value for each item
+    
+
+	$fileInfo = Get-CachedFileData -FilePath $directoryPath
+
+	$readableSize = ConvertTo-ReadableSize -Bytes $fileInfo.Size
+	$item.SubItems.Add($readableSize)
+	$item.SubItems.Add($fileInfo.DateCreated.ToString("M-dd-yyyy h:mm tt"))
+	$item.SubItems.Add($fileInfo.DateModified.ToString("M-dd-yyyy h:mm tt"))
     $_.Item = $item
 }
 
@@ -506,7 +645,7 @@ function runsearch {
 	} elseif ($searchBox.Text.Length -lt 2) {
 		return
 	}
-
+	$global:FileDataCache = @{}
 	$global:SearchSpeed = 0
 	$global:SearchCountOffset = 0
 	$global:ProcessCount = 0
@@ -540,14 +679,13 @@ function runsearch {
 
 	foreach ($drive in $drives) {
 		$luaScriptPath = "luasearch.lua"
-		$arg = "-b"
 		Out-File -FilePath "GUIoutput.txt" -InputObject ($drive.Root.ToString()) -Encoding ascii -Append
 		
 	
 		if (Test-Path -LiteralPath "README.md") {
-			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath, $arg -RedirectStandardError "error.txt" -PassThru
+			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath -RedirectStandardError "error.txt" -PassThru
 		} else {
-			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath, $arg -RedirectStandardError "error.txt" -PassThru -WindowStyle Hidden
+			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath -RedirectStandardError "error.txt" -PassThru -WindowStyle Hidden
 		}
 		$driveLetter = $drive.Root.Substring(0, 1)
 		 $runningProcesses[$driveLetter] = $process
@@ -719,7 +857,7 @@ $virtualListView_MouseDoubleClick = {
 $contextMenuStrip = New-Object System.Windows.Forms.ContextMenuStrip
 
 # Create the 'Open in Explorer' menu item
-$openInExplorerMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem("Open in Explorer")
+$openInExplorerMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem("Show in Explorer")
 $openInExplorerMenuItem.Enabled = $false
 
 $openInExplorerMenuItem.add_Click({

@@ -1,6 +1,8 @@
 local lfs = require('lfs')
-local st = os.time()
 
+local function showwindow()
+	exe([[powershell -window normal -command ""]])
+end
 
 local function loadOptions(filename)
 	local options = {}
@@ -70,7 +72,7 @@ function contains_all_words(input_string, words_table, negatives)
 end
 
 
-function extract_lines(file_path,numlines)
+function extract_lines(file_path, numlines)
     local extracted_lines = {}
     local remaining_lines = {}
     numlines = numlines or 1
@@ -98,7 +100,11 @@ end
 
 local function addresults(driveletter, toadd)
 	
-	local resultsFile = io.open(driveletter .. "results.txt", "a")
+	--if arg[1] then
+    --    print(toadd:gsub([[\\]],[[\]]))
+    --    return
+    --end
+    local resultsFile = io.open(driveletter .. "results.txt", "a")
 	resultsFile:write((toadd:gsub([[\\]],[[\]])))
 	resultsFile:close()
 end
@@ -122,7 +128,9 @@ local function tick()
 	end
 	return false
 end
-
+local function space2quote(str)
+	return str:gsub(" ",'" "')
+end
 local function updateStats(driveletter,searchcount)
 	local stats = io.open(driveletter .. "stats.txt", "w")
 	stats:write("searchcount="..tostring(searchcount))
@@ -131,8 +139,11 @@ end
 
 function search_files_and_folders(searchText, drive)
     local driveletter = drive:sub(1,1)
-	os.remove(driveletter .. "results.txt")
-	os.remove(driveletter .. "stats.txt")
+	--if not arg[1] then
+        os.remove(driveletter .. "results.txt")
+	    os.remove(driveletter .. "stats.txt")
+    --end
+    
     local search_table = split_by_spaces(searchText)
 	local negatives = {}
 	for i,word in ipairs(search_table) do
@@ -153,8 +164,20 @@ function search_files_and_folders(searchText, drive)
             search_table[i] = "^" .. ExactMatch.. "$"
         end
         search_table[i] = string.gsub(search_table[i], ":", "%%s")
-        print(search_table[i])
 	end
+    --local subProsesses = {}
+    --local function checkSubprosess()
+    --    if #subProsesses > 1 then
+    --         for _,sprocess in ipairs(subProsesses) do
+    --            local results = sprocess:read("*all")
+    --            if #results > 1 then
+    --            addresults(driveletter, results)
+    --            end
+    --             sprocess:close()
+    --         end
+    --         subProsesses = {}
+    --     end
+    --end
 	local searchcount = 0
 	function search(path)
         
@@ -163,6 +186,7 @@ function search_files_and_folders(searchText, drive)
                 local ontick = tick()
 				local fullPath = path..'\\'..file
                 local attr = lfs.attributes(fullPath)
+                
                 if attr then
                     searchcount = searchcount+1
 					if ontick then
@@ -174,6 +198,10 @@ function search_files_and_folders(searchText, drive)
                         if contains_all_words(file, search_table, negatives) then
                             addresults(driveletter, fullPath .. "\n")
                         end
+                        
+                        --print(file)
+                        --table.insert(subProsesses, io.popen([[SearchAgent.exe luasearch.lua "]]..fullPath..[[" 2>&1]]))
+                        --checkSubprosess()
                         search(fullPath)
                     else
                         if contains_all_words(file, search_table, negatives) then
@@ -186,13 +214,21 @@ function search_files_and_folders(searchText, drive)
     end
 	
     search(drive)
+    --checkSubprosess()
     updateStats(driveletter,searchcount)
 end
 
-
+--print(arg[1])
 Config = loadOptions("SearchOptions.txt")
-local drive = extract_lines("GUIoutput.txt",1)[1]
+local drive = extract_lines("GUIoutput.txt",1)[1] --arg[1] or 
 os.remove("GUIoutput.txt")
-search_files_and_folders(Config.SearchText, drive)
-print(os.time()-st)
-print((os.time()-st)/60)
+local OK, errormsg = pcall(search_files_and_folders, Config.SearchText, drive)
+if not OK then
+    print("Looks like you found an error!")
+    print("Please report this error to https://github.com/PhytoEpidemic/fast-search/issues")
+    print(errormsg)
+    showwindow()
+    os.execute("pause")
+    
+end
+--os.execute("pause")
