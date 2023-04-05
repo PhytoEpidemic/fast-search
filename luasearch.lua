@@ -41,7 +41,11 @@ function remove_enclosed_quotes(str)
         return false
     end
 end
-
+function trim(s)
+    return s:gsub("^%s*(.-)%s*$", "%1")
+end
+  
+  
 function windowsToLuaPattern(windowsPattern)
     -- Escape Lua magic characters
     local pattern = windowsPattern:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1")
@@ -138,6 +142,7 @@ local function updateStats(driveletter,searchcount)
 end
 
 function search_files_and_folders(searchText, drive)
+    drive = trim(drive:gsub([["]],""):gsub([[']],""))
     local driveletter = drive:sub(1,1)
 	--if not arg[1] then
         os.remove(driveletter .. "results.txt")
@@ -180,7 +185,6 @@ function search_files_and_folders(searchText, drive)
     --end
 	local searchcount = 0
 	function search(path)
-        
 		for file in lfs.dir(path) do
             if file ~= "." and file ~= ".." then
                 local ontick = tick()
@@ -199,7 +203,7 @@ function search_files_and_folders(searchText, drive)
                             addresults(driveletter, fullPath .. "\n")
                         end
                         
-                        --print(file)
+                       
                         --table.insert(subProsesses, io.popen([[SearchAgent.exe luasearch.lua "]]..fullPath..[[" 2>&1]]))
                         --checkSubprosess()
                         search(fullPath)
@@ -221,6 +225,7 @@ end
 --print(arg[1])
 Config = loadOptions("SearchOptions.txt")
 local drive = extract_lines("GUIoutput.txt",1)[1] --arg[1] or 
+--print(drive)
 os.remove("GUIoutput.txt")
 local OK, errormsg = pcall(search_files_and_folders, Config.SearchText, drive)
 if not OK then

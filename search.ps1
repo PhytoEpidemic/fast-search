@@ -10,6 +10,23 @@ $toolTip.AutoPopDelay = 10000
 Return $toolTip
 }
 
+Function ChooseFolder($Message) {
+    $FolderBrowse = New-Object System.Windows.Forms.OpenFileDialog -Property @{ValidateNames = $false;CheckFileExists = $false;RestoreDirectory = $true;FileName = $Message;}
+    $null = $FolderBrowse.ShowDialog()
+    $FolderName = Split-Path -Path $FolderBrowse.FileName
+    
+	return $FolderName
+}
+function Check-ContextMenuItem {
+    param (
+        [string]$Name
+    )
+
+    $itemPath = "Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\$Name"
+	return (Test-Path $itemPath)
+}
+
+
 function Test-PathWithErrorHandling {
     param (
         [string]$Path
@@ -253,6 +270,11 @@ $dropdown.Add_SelectedIndexChanged({
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Power Search'
 $form.Size = New-Object System.Drawing.Size(800, 400)
+$LeftLayout = New-Object System.Windows.Forms.FlowLayoutPanel
+$LeftLayout.Location = New-Object System.Drawing.Point(20,40)
+	$LeftLayout.Dock = [System.Windows.Forms.DockStyle]::None
+	$LeftLayout.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
+	$LeftLayout.AutoSize = $true
 $minWidth = 450
 $minHeight = 300
 $form.MinimumSize = New-Object System.Drawing.Size($minWidth, $minHeight)
@@ -274,10 +296,17 @@ $helpIcon.Add_Click({
 })
 #$toolTip.SetToolTip($helpIcon,(Get-Content "searchhelp.txt" -Raw))
 
+$Searchlabel = New-Object System.Windows.Forms.Label
+$Searchlabel.Text = "Searching inside: This PC"
+$Searchlabel.AutoSize = $true
+
+
 
 $searchBox = New-Object System.Windows.Forms.TextBox
-$searchBox.Location = New-Object System.Drawing.Point(20, 20)
-$searchBox.Size = New-Object System.Drawing.Size(340, 20)
+$SearchBox.TabIndex = 0
+$searchBox.Location = New-Object System.Drawing.Point(20, 15)
+
+#$searchBox.Size = New-Object System.Drawing.Size(440, 20)
 $toolTip.SetToolTip($searchBox,(Get-Content "searchhelp.txt" -Raw))
 
 $textBox_KeyDown = {
@@ -302,45 +331,111 @@ $searchBox.Add_TextChanged({
 
 
 
-$form.Controls.Add($searchBox)
+
 
 
 $searchButton = New-Object System.Windows.Forms.Button
 $searchButton.Text = 'Search'
+
 $searchButton.Location = New-Object System.Drawing.Point(270, 40)
 #$searchButton.AutoSize = $true
 $searchButton.Size = New-Object System.Drawing.Size(120, 40)
-$form.Controls.Add($searchButton)
+
 $CaseSensitiveCheckBox = New-Object System.Windows.Forms.CheckBox
 $CaseSensitiveCheckBox.Text = "Case Sensitive"
 $CaseSensitiveCheckBox.Checked = $true
 $toolTip.SetToolTip($CaseSensitiveCheckBox, "Make the search sensitve to UPPER and lower case letters")
-$form.Controls.Add($CaseSensitiveCheckBox)
+
 $ContainesAllCheckBox = New-Object System.Windows.Forms.CheckBox
 $ContainesAllCheckBox.Text = "Containes All"
 $ContainesAllCheckBox.Checked = $true
 $toolTip.SetToolTip($ContainesAllCheckBox, "Search only for files or folders that contain every key word in its name.")
 
-$form.Controls.Add($ContainesAllCheckBox)
-
 
 
 $searchResultsLabel = New-Object System.Windows.Forms.Label
-$searchResultsLabel.Location = New-Object System.Drawing.Point(20, 60)
 $searchResultsLabel.AutoSize = $true
-$form.Controls.Add($searchResultsLabel)
+
 $searchCountLabel = New-Object System.Windows.Forms.Label
-$searchCountLabel.Location = New-Object System.Drawing.Point(20, 42)
 $searchCountLabel.AutoSize = $true
 $searchCountLabel.Text = "Search Count: 0"
-$form.Controls.Add($searchCountLabel)
-$processCountlabel = New-Object System.Windows.Forms.Label
-$processCountlabel.Location = New-Object System.Drawing.Point(20, 80)
-$processCountlabel.AutoSize = $true
-$form.Controls.Add($processCountlabel)
 
-$form.Controls.Add($dropdown)
-$form.Controls.Add($SBlabel)
+$processCountlabel = New-Object System.Windows.Forms.Label
+$processCountlabel.AutoSize = $true
+
+
+
+
+
+
+# Create the MenuStrip
+$MenuStrip = New-Object System.Windows.Forms.MenuStrip
+$MenuStrip.Dock = [System.Windows.Forms.DockStyle]::Bottom
+
+# Create the "File" dropdown menu
+$FileMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$FileMenuItem.Text = "Options"
+$FileMenuItem.Add_MouseHover({
+    Remove-Item (Join-Path -Path $PowerSearchFolder -ChildPath "AddContext.txt") -ErrorAction Ignore -Force
+    Remove-Item (Join-Path -Path $PowerSearchFolder -ChildPath "RemoveContext.txt") -ErrorAction Ignore -Force
+	setContextStripItems
+})
+
+
+# Create the "Open Folder" menu item
+$OpenFolderMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$OpenFolderMenuItem.Text = "Search a folder"
+$OpenFolderMenuItem.add_Click({
+    $DialogResult = ChooseFolder -Message "Search here"
+
+    if ($DialogResult) {
+		Stop-Search
+		$global:OneFolderSearch = $DialogResult
+		setSearchLabel
+        
+    }
+})
+
+$ContextToolMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$ContextToolMenuItem.Text = "Add to explorer"
+$ContextToolMenuItem.add_Click({
+	Add-PowerSearchContextMenuItem
+	setContextStripItems
+})
+$RmContextToolMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$RmContextToolMenuItem.Text = "Remove from explorer"
+$RmContextToolMenuItem.add_Click({
+	Remove-PowerSearchContextMenuItem
+	setContextStripItems
+})
+
+# Add the "Open Folder" menu item to the "File" dropdown menu
+$FileMenuItem.DropDownItems.Add($OpenFolderMenuItem)
+function setContextStripItems {
+	if ((Check-ContextMenuItem -Name "Power Search")) {
+		$FileMenuItem.DropDownItems.Remove($ContextToolMenuItem)
+		$FileMenuItem.DropDownItems.Add($RmContextToolMenuItem)
+	} else {
+		$FileMenuItem.DropDownItems.Remove($RmContextToolMenuItem)
+		$FileMenuItem.DropDownItems.Add($ContextToolMenuItem)
+		
+		
+	}
+}
+
+
+setContextStripItems
+
+
+# Add the "File" dropdown menu to the MenuStrip
+$MenuStrip.Items.Add($FileMenuItem)
+
+
+
+
+
+
+
 
 function Add-ThousandsSeparator {
     param (
@@ -356,8 +451,13 @@ function Update-ProcessCountLabel {
 	$processCount = 0
 	$newprocessCountlabelText = "Active Searches:"
 	
-	foreach ($drive in $drives) {
-        $driveLetter = $drive.Root.Substring(0, 1)
+	foreach ($drive in $global:drives) {
+        $driveLetter = $drive.Root
+        if (-Not $driveLetter) {
+			$driveLetter = $drive.Substring(0, 1)
+		} else {
+			$driveLetter = $drive.Root.Substring(0, 1)
+		}
 		$isRunning = IsProcessRunning -driveLetter $driveLetter
 		if ($isRunning) {
 			$processCount += 1
@@ -432,6 +532,16 @@ function ConvertTo-ReadableSize {
 }
 
 
+function Remove-Newlines {
+    param (
+        [string]$InputString
+    )
+
+    return $InputString -replace '\r|\n', ''
+}
+
+
+
 $global:FileDataCache = @{}
 
 function Get-CachedFileData {
@@ -465,12 +575,155 @@ function Get-CachedFileData {
 
 
 
+function Add-ContextMenuItem {
+    param (
+        [string]$Name,
+        [string]$IconPath,
+        [string]$ScriptPath
+    )
+
+    $itemPath = "Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\$Name"
+    $commandPath = "Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\$Name\command"
+
+    # Create the registry key for the context menu item
+    New-Item -Path $itemPath -Force | Out-Null
+    New-ItemProperty -Path $itemPath -Name "Icon" -Value $IconPath -PropertyType String -Force | Out-Null
+
+    # Create the registry key for the command associated with the context menu item
+    New-Item -Path $commandPath -Force | Out-Null
+    New-ItemProperty -Path $commandPath -Name "(Default)" -Value "`"$ScriptPath`" `"%V`"" -PropertyType String -Force | Out-Null
+}
+
+
+function Remove-ContextMenuItem {
+    param (
+        [string]$Name
+    )
+
+    $itemPath = "Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\$Name"
+
+    # Remove the registry key for the context menu item
+    Remove-Item -Path $itemPath -Recurse -Force
+}
+
+
+
+
+$AppDataFolder = [Environment]::GetFolderPath('ApplicationData')
+$PowerSearchFolder = Join-Path -Path $AppDataFolder -ChildPath "Power Search"
+$global:OneFolderSearch = Join-Path -Path $PowerSearchFolder -ChildPath "SearchSpot.txt"
+$global:dontShow = $false
+if (-Not (Test-Path $global:OneFolderSearch)) {
+	$global:OneFolderSearch = $false
+} else {
+	$TempContent = Get-Content $global:OneFolderSearch -Raw
+	Remove-Item $global:OneFolderSearch
+	$global:OneFolderSearch = $TempContent
+	$global:OneFolderSearch = $global:OneFolderSearch -replace "'" -replace '"'
+	$global:OneFolderSearch = Remove-Newlines -InputString $global:OneFolderSearch
+}
+
+
+
+
+function Test-IsAdmin {
+    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $windowsPrincipal = New-Object System.Security.Principal.WindowsPrincipal($currentUser)
+    $adminRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
+
+    return $windowsPrincipal.IsInRole($adminRole)
+}
+
+
+
+
+function setSearchLabel {
+	if ($global:OneFolderSearch) {
+		$Searchlabel.Text = "Searching inside: `"$global:OneFolderSearch`""
+		
+	}
+}
+setSearchLabel
+
+
+
+function Remove-PowerSearchContextMenuItem {
+    $result = [System.Windows.Forms.MessageBox]::Show("Are you sure want to remove `"Power Search`" from the context menu inside of explorer?", "Power Search", [System.Windows.Forms.MessageBoxButtons]::YesNo)
+
+    if ($result -eq 'Yes') {
+        $AppDataFolder = [Environment]::GetFolderPath('ApplicationData')
+        $PowerSearchFolder = Join-Path -Path $AppDataFolder -ChildPath "Power Search"
+
+        if (-not (Test-Path -Path $PowerSearchFolder)) {
+            New-Item -Path $PowerSearchFolder -ItemType Directory | Out-Null
+        }
+
+		New-Item -Path (Join-Path -Path $PowerSearchFolder -ChildPath "RemoveContext.txt") -ItemType File -Force
+		Start-Process "shell:Appsfolder\33586Cherubim.PowerSearch_azr4d3dytcq80!PowerSearch" -Verb runAs -Wait
+    }
+}
+
+
+function Add-PowerSearchContextMenuItem {
+    $result = [System.Windows.Forms.MessageBox]::Show("Do you want to add `"Power Search`" to the context menu inside of explorer?`nThis will let you quickly start searching in a specific folder by right clicking the background inside of explorer.", "Power Search", [System.Windows.Forms.MessageBoxButtons]::YesNo)
+
+    if ($result -eq 'Yes') {
+        $AppDataFolder = [Environment]::GetFolderPath('ApplicationData')
+        $PowerSearchFolder = Join-Path -Path $AppDataFolder -ChildPath "Power Search"
+
+        if (-not (Test-Path -Path $PowerSearchFolder)) {
+            New-Item -Path $PowerSearchFolder -ItemType Directory | Out-Null
+        }
+
+		New-Item -Path (Join-Path -Path $PowerSearchFolder -ChildPath "AddContext.txt") -ItemType File -Force
+		Start-Process "shell:Appsfolder\33586Cherubim.PowerSearch_azr4d3dytcq80!PowerSearch" -Verb runAs -Wait
+    }
+}
+
+function Add-PowerSearchContextMenuItemAdmin {
+	$AppDataFolder = [Environment]::GetFolderPath('ApplicationData')
+    $PowerSearchFolder = Join-Path -Path $AppDataFolder -ChildPath "Power Search"
+    if (Test-Path -Path (Join-Path -Path $PowerSearchFolder -ChildPath "AddContext.txt")) {
+        Remove-Item (Join-Path -Path $PowerSearchFolder -ChildPath "AddContext.txt")
+        if (Test-IsAdmin) {
+		
+		
+		Copy-Item -Path ".\logo5.ico" -Destination (Join-Path -Path $PowerSearchFolder -ChildPath "icon.ico") -Force
+        Copy-Item -Path ".\context.bat" -Destination (Join-Path -Path $PowerSearchFolder -ChildPath "Script.bat") -Force
+
+        Add-ContextMenuItem -Name "Power Search" -IconPath (Join-Path -Path $PowerSearchFolder -ChildPath "icon.ico") -ScriptPath (Join-Path -Path $PowerSearchFolder -ChildPath "Script.bat")
+		$global:dontShow = $true
+		}
+		
+    }
+}
+
+function Remove-PowerSearchContextMenuItemAdmin {
+	$AppDataFolder = [Environment]::GetFolderPath('ApplicationData')
+    $PowerSearchFolder = Join-Path -Path $AppDataFolder -ChildPath "Power Search"
+    if (Test-Path -Path (Join-Path -Path $PowerSearchFolder -ChildPath "RemoveContext.txt")) {
+		Remove-Item (Join-Path -Path $PowerSearchFolder -ChildPath "RemoveContext.txt")
+		if (Test-IsAdmin) {
+			Remove-Item -Path $PowerSearchFolder -Recurse -Force
+		
+		
+			Remove-ContextMenuItem -Name "Power Search"
+			$global:dontShow = $true
+		}
+		
+    }
+}
+
+Add-PowerSearchContextMenuItemAdmin
+Remove-PowerSearchContextMenuItemAdmin
+
+
 
 
 
 $virtualListView = New-Object System.Windows.Forms.ListView
-$virtualListView.Location = New-Object System.Drawing.Point(20, 100)
 $virtualListView.Size = New-Object System.Drawing.Size(330, 150)
+$virtualListView.Location = New-Object System.Drawing.Point(20, 110)
 $virtualListView.View = [System.Windows.Forms.View]::Details
 $virtualListView.VirtualMode = $true
 $virtualListView.VirtualListSize = 1
@@ -541,7 +794,7 @@ $virtualListView_RetrieveVirtualItem = {
 
 $virtualListView.add_RetrieveVirtualItem($virtualListView_RetrieveVirtualItem)
 
-$form.Controls.Add($virtualListView)
+
 
 
 
@@ -601,18 +854,18 @@ function Set-ControlPosition {
 }
 
 function setControlPosAndSize {
-	Resize-Control -Form $form -Control $virtualListView -WidthOffset 50 -HeightOffset 50
-	Resize-Control -Form $form -Control $searchBox -WidthOffset 160 -HeightOffset 0
+	Resize-Control -Form $form -Control $virtualListView -WidthOffset 50 -HeightOffset 60
+	Resize-Control -Form $form -Control $searchBox -WidthOffset 200 -HeightOffset 0
 	Set-ControlPosition -Form $form -Control $CaseSensitiveCheckBox -Edge 'TopRight' -XOffset 35 -YOffset 50
 	Set-ControlPosition -Form $form -Control $ContainesAllCheckBox -Edge 'TopRight' -XOffset 35 -YOffset 75
 	Set-ControlPosition -Form $form -Control $searchButton -Edge 'TopRight' -XOffset 20 -YOffset 10
-	Set-ControlPosition -Form $form -Control $dropdown -Edge 'BottomRight' -XOffset 50 -YOffset 20
-	Set-ControlPosition -Form $form -Control $SBlabel -Edge 'BottomRight' -XOffset 95 -YOffset 15
+	Set-ControlPosition -Form $form -Control $dropdown -Edge 'BottomRight' -XOffset 50 -YOffset 30
+	Set-ControlPosition -Form $form -Control $SBlabel -Edge 'BottomRight' -XOffset 95 -YOffset 25
 }
 
 
 
-setControlPosAndSize
+
 $form.Add_Resize({
 	setControlPosAndSize
 	
@@ -624,14 +877,31 @@ $timer.Interval = 100
 
 
 function Stop-Search {
-	foreach ($drive in $drives) {
-		$driveLetter = $drive.Root.Substring(0, 1)
+	foreach ($drive in $global:drives) {
+		$driveLetter = $drive.Root
+        if (-Not $driveLetter) {
+			$driveLetter = $drive.Substring(0, 1)
+		} else {
+			$driveLetter = $drive.Root.Substring(0, 1)
+		}
 		$isRunning = IsProcessRunning -driveLetter $driveLetter
 		if ($isRunning) {
 			$process = $runningProcesses[$driveLetter]
 			Stop-Process -Id $process.Id -Force
 		}
 	}
+}
+
+
+function startLuaSearch {
+	$process = $null
+	$luaScriptPath = "luasearch.lua"
+	if (Test-Path -LiteralPath "README.md") {
+		$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath -RedirectStandardError "error.txt" -PassThru
+	} else {
+		$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath -RedirectStandardError "error.txt" -PassThru -WindowStyle Hidden
+	}
+	return $process
 }
 
 
@@ -663,11 +933,9 @@ function runsearch {
     Remove-Item "GUIoutput.txt" -ErrorAction Ignore
     Remove-Item "SearchOptions.txt" -ErrorAction Ignore
 
-    $global:drives = Get-PSDrive -PSProvider FileSystem
     
-    foreach ($drive in $global:drives) {
-        
-    }
+    
+
 	$lua = "SearchAgent.exe" 
 	Stop-Search
 	
@@ -676,25 +944,29 @@ function runsearch {
 		"CaseSensitive=" + $CaseSensitiveCheckBox.Checked.ToString() + "`n" +
 		"ContainesAll=" + $ContainesAllCheckBox.Checked.ToString() + "`n"
 	) -Encoding ascii -Append
-
-	foreach ($drive in $drives) {
-		$luaScriptPath = "luasearch.lua"
-		Out-File -FilePath "GUIoutput.txt" -InputObject ($drive.Root.ToString()) -Encoding ascii -Append
+	
+	if ($global:OneFolderSearch) {
+		Out-File -FilePath "GUIoutput.txt" -InputObject ($global:OneFolderSearch) -Encoding ascii -Append
 		
-	
-		if (Test-Path -LiteralPath "README.md") {
-			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath -RedirectStandardError "error.txt" -PassThru
-		} else {
-			$process = Start-Process -FilePath $lua -ArgumentList $luaScriptPath -RedirectStandardError "error.txt" -PassThru -WindowStyle Hidden
-		}
-		$driveLetter = $drive.Root.Substring(0, 1)
-		 $runningProcesses[$driveLetter] = $process
-	
-		while (Test-PathWithErrorHandling "GUIoutput.txt") {
-			Start-Sleep -Milliseconds 1
+		$global:drives = @(($global:OneFolderSearch.Substring(0,3)))
+		$runningProcesses[($global:OneFolderSearch.Substring(0,1))] = startLuaSearch
+	} else {
+		$global:drives = Get-PSDrive -PSProvider FileSystem
+		foreach ($drive in $global:drives) {
+			
+			Out-File -FilePath "GUIoutput.txt" -InputObject ($drive.Root.ToString()) -Encoding ascii -Append
+			
+
+			$process = startLuaSearch
+			$driveLetter = $drive.Root.Substring(0, 1)
+			 $runningProcesses[$driveLetter] = $process
+			 
+		
+			while (Test-PathWithErrorHandling "GUIoutput.txt") {
+				Start-Sleep -Milliseconds 1
+			}
 		}
 	}
-
     $timer.Start()
 }
 
@@ -750,9 +1022,14 @@ $timer.Add_Tick({
     $searchCount = 0
     $SearchIsRunning = $false
 	$RunningSearches = 0
-	foreach ($drive in $drives) {
-        $driveLetter = $drive.Root.Substring(0, 1)
-        $isRunning = IsProcessRunning -driveLetter $driveLetter
+	foreach ($drive in $global:drives) {
+        $driveLetter = $drive.Root
+        if (-Not $driveLetter) {
+			$driveLetter = $drive.Substring(0, 1)
+		} else {
+			$driveLetter = $drive.Root.Substring(0, 1)
+		}
+		$isRunning = IsProcessRunning -driveLetter $driveLetter
 		if ($isRunning) {
 			$RunningSearches += 1
 		}
@@ -895,7 +1172,35 @@ $form.Add_FormClosing({
 	$timer.Dispose()
 	Stop-Search
 })
+$form.Controls.Add($searchBox)
+$form.Controls.Add($virtualListView)
+$form.Controls.Add($MenuStrip)
+$form.Controls.Add($searchButton)
+$form.Controls.Add($CaseSensitiveCheckBox)
+$form.Controls.Add($ContainesAllCheckBox)
 
-$form.ShowDialog()
+$form.Controls.Add($dropdown)
+$form.Controls.Add($SBlabel)
+
+
+
+$LeftLayout.Controls.Add($Searchlabel)
+
+$LeftLayout.Controls.Add($searchCountLabel)
+$LeftLayout.Controls.Add($searchResultsLabel)
+
+$LeftLayout.Controls.Add($processCountlabel)
+
+
+
+$form.Controls.Add($LeftLayout)
+
+
+setControlPosAndSize
+
+
+if (-Not $global:dontShow) {
+	$form.ShowDialog()
+}
 $timer.Stop()
 $timer.Dispose()
