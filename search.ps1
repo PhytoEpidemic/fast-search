@@ -552,9 +552,10 @@ function Get-CachedFileData {
     if ($global:FileDataCache.ContainsKey($FilePath)) {
         return $global:FileDataCache[$FilePath]
     } else {
-        $fileItem = Get-Item -LiteralPath $FilePath
+        
+		$fileItem = Get-Item -LiteralPath $FilePath -ErrorAction Ignore
 
-        if (Test-Path -LiteralPath $FilePath -PathType Leaf) {
+        if ($fileItem -and (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
             $fileData = @{
                 Size = $fileItem.Length
                 DateCreated = $fileItem.CreationTime
@@ -787,8 +788,21 @@ $virtualListView_RetrieveVirtualItem = {
 
 	$readableSize = ConvertTo-ReadableSize -Bytes $fileInfo.Size
 	$item.SubItems.Add($readableSize)
-	$item.SubItems.Add($fileInfo.DateCreated.ToString("M-dd-yyyy h:mm tt"))
-	$item.SubItems.Add($fileInfo.DateModified.ToString("M-dd-yyyy h:mm tt"))
+	try {
+		$DateCreated = $fileInfo.DateCreated.ToString("M-dd-yyyy h:mm tt")
+		$item.SubItems.Add($DateCreated)
+	} catch {
+		$item.SubItems.Add(0)
+	}
+	
+	try {
+		$DateModified = $fileInfo.DateModified.ToString("M-dd-yyyy h:mm tt")
+		$item.SubItems.Add($DateModified)
+	} catch {
+		$item.SubItems.Add(0)
+	}
+	
+
     $_.Item = $item
 }
 
