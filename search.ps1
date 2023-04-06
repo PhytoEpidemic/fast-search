@@ -397,13 +397,13 @@ $OpenFolderMenuItem.add_Click({
 })
 
 $ContextToolMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
-$ContextToolMenuItem.Text = "Add to explorer"
+$ContextToolMenuItem.Text = "Add to File Explorer"
 $ContextToolMenuItem.add_Click({
 	Add-PowerSearchContextMenuItem
 	setContextStripItems
 })
 $RmContextToolMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
-$RmContextToolMenuItem.Text = "Remove from explorer"
+$RmContextToolMenuItem.Text = "Remove from File Explorer"
 $RmContextToolMenuItem.add_Click({
 	Remove-PowerSearchContextMenuItem
 	setContextStripItems
@@ -649,7 +649,7 @@ setSearchLabel
 
 
 function Remove-PowerSearchContextMenuItem {
-    $result = [System.Windows.Forms.MessageBox]::Show("Are you sure want to remove `"Power Search`" from the context menu inside of explorer?", "Power Search", [System.Windows.Forms.MessageBoxButtons]::YesNo)
+    $result = [System.Windows.Forms.MessageBox]::Show("Are you sure want to remove `"Power Search`" from the context menu inside of File Explorer?", "Power Search", [System.Windows.Forms.MessageBoxButtons]::YesNo)
 
     if ($result -eq 'Yes') {
         $AppDataFolder = [Environment]::GetFolderPath('ApplicationData')
@@ -666,7 +666,7 @@ function Remove-PowerSearchContextMenuItem {
 
 
 function Add-PowerSearchContextMenuItem {
-    $result = [System.Windows.Forms.MessageBox]::Show("Do you want to add `"Power Search`" to the context menu inside of explorer?`nThis will let you quickly start searching in a specific folder by right clicking the background inside of explorer.", "Power Search", [System.Windows.Forms.MessageBoxButtons]::YesNo)
+    $result = [System.Windows.Forms.MessageBox]::Show("Do you want to add `"Power Search`" to the context menu inside of File Explorer?`nThis will let you quickly start searching in a specific folder by right clicking the background inside of File Explorer.", "Power Search", [System.Windows.Forms.MessageBoxButtons]::YesNo)
 
     if ($result -eq 'Yes') {
         $AppDataFolder = [Environment]::GetFolderPath('ApplicationData')
@@ -922,7 +922,7 @@ function startLuaSearch {
 function runsearch {
 
 	if ($searchBox.Text.Length -eq 1) {
-		$messageBoxResult = [System.Windows.Forms.MessageBox]::Show("The search text is only one character. This can cause the program to freeze for long periods of time.`n`n Are you sure you want to continue?", "Confirm", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+		$messageBoxResult = [System.Windows.Forms.MessageBox]::Show("The search text is only one character. This can render hundreds of thousands of results and will be very slow.`n`n Are you sure you want to continue?", "Confirm Search", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
 		if ($messageBoxResult -eq [System.Windows.Forms.DialogResult]::No) {
 			return
 		}
@@ -1023,7 +1023,45 @@ function Get-DividedValueByElapsedTime {
 
     return $result
 }
+$global:linesPerSecond = 400
+function ProcessContent {
+    param (
+        [array]$Content,
+        [int]$StartingLine
+    )
 
+    $lineNumber = $StartingLine
+    $counter = 0
+
+    $MaxToLoad = (1 / ($runningProcesses.Count)) * $global:linesPerSecond
+
+    # Get the start time
+    $startTime = Get-Date
+
+    while ($counter -lt $Content.Count) {
+        $lineNumber++
+        $global:VirtualList += $Content[$counter]
+
+        if (($lineNumber - $StartingLine) -gt ($MaxToLoad)) {
+            $counter = $Content.Count # This will stop the loop
+        } else {
+            $counter++
+        }
+    }
+
+    # Get the end time
+    $endTime = Get-Date
+
+    # Calculate the duration and lines per second
+    $duration = $endTime - $startTime
+    if ($lineNumber -ne $StartingLine) {
+		$NewlinesPerSecond = ($lineNumber - $StartingLine) / ($duration.TotalMilliseconds/1000)
+		if ($NewlinesPerSecond -lt 10000) {$global:linesPerSecond = ($NewlinesPerSecond+$global:linesPerSecond)/2}
+	}
+    
+
+    return $lineNumber
+}
 
 
 $SearchSpeed = 0
@@ -1059,12 +1097,9 @@ $timer.Add_Tick({
                 $global:lastLineRead[$driveLetter] = 0
             }
             $content = Get-Content $resultFile -ErrorAction Ignore | Select-Object -Skip $global:lastLineRead[$driveLetter]
-            $lineNumber = $global:lastLineRead[$driveLetter]
-            
-			$content | ForEach-Object {
-				$lineNumber++	
-				$global:VirtualList += $_
-            }
+
+			$lineNumber = ProcessContent -Content $content -StartingLine ($global:lastLineRead[$driveLetter])
+			
 			if ($global:VirtualList.Count -ne $global:ResultsCount) {
 				$global:ResultsCount = $global:VirtualList.Count 
 				$MadeChange = $true 
