@@ -198,7 +198,7 @@ $dropdown.Items.Add("Date Modified")
 
 $dropdown.SelectedIndex = 0
 
-$VirtualList = @()
+$global:VirtualList = New-Object 'System.Collections.Generic.List[string]'
 function Update-Sort {
 	if ($global:VirtualList.Count -gt 1) {
 		$selectedItemValue = $null
@@ -214,7 +214,7 @@ function Update-Sort {
 				[System.Collections.ArrayList]$SortedDirectories
 			)
 			$virtualListView.VirtualListSize = $SortedDirectories.Count
-			$global:VirtualList = @()
+			$global:VirtualList = New-Object 'System.Collections.Generic.List[string]'
 			$virtualListView.Invalidate()
 			$global:VirtualList = $SortedDirectories
 		}
@@ -358,7 +358,7 @@ $searchResultsLabel.AutoSize = $true
 
 $searchCountLabel = New-Object System.Windows.Forms.Label
 $searchCountLabel.AutoSize = $true
-$searchCountLabel.Text = "Search Count: 0"
+$searchCountLabel.Text = " "
 
 $processCountlabel = New-Object System.Windows.Forms.Label
 $processCountlabel.AutoSize = $true
@@ -427,6 +427,114 @@ function setContextStripItems {
 setContextStripItems
 
 
+
+$settingsMenuItem = New-Object System.Windows.Forms.ToolStripMenuItem
+$settingsMenuItem.Text = 'Settings'
+#$FileMenuItem.DropDownItems.Add($settingsMenuItem)
+$settingsForm = New-Object System.Windows.Forms.Form
+    $settingsForm.Text = 'Settings'
+    $settingsForm.StartPosition = 'CenterParent'
+    $settingsForm.Size = '300,200'
+    $settingsForm.FormBorderStyle = 'FixedDialog'
+    $settingsForm.MaximizeBox = $false
+    $settingsForm.MinimizeBox = $false
+    $settingsForm.Icon = "logo5.ico"
+
+
+function loadSettingsForm {
+    # Create settings form
+    
+    
+    $Config = LoadSettings
+    
+    # Create Save button
+    $saveButton = New-Object System.Windows.Forms.Button
+    $saveButton.Text = 'Save'
+    $saveButton.Location = New-Object System.Drawing.Point(20, 120)
+    $saveButton.Size = New-Object System.Drawing.Size(75, 23)
+    $saveButton.Add_Click({
+        #SaveSettings ("") ($)
+        $settingsForm.Close()
+    })
+    $settingsForm.Controls.Add($saveButton)
+    # Create Cancel button
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Text = 'Cancel'
+    $cancelButton.Location = New-Object System.Drawing.Point(110, 120)
+    $cancelButton.Size = New-Object System.Drawing.Size(75, 23)
+    $cancelButton.Add_Click({ $settingsForm.Close() })
+    $settingsForm.Controls.Add($cancelButton)
+    $settingsForm.ShowDialog()
+}
+
+
+$settingsMenuItem.Add_Click({
+    loadSettingsForm
+    
+})
+function ConvertTo-Hashtable($inputObject) {
+    $hashTable = @{}
+    Get-Member -InputObject $inputObject -MemberType NoteProperty | ForEach-Object {
+        $hashTable[$_.Name] = $inputObject.($_.Name)
+    }
+    return $hashTable
+}
+
+# Functions
+function SaveSettings([string]$key, $Settingvalue) {
+    $appData = [Environment]::GetFolderPath('ApplicationData')
+    $settingsDir = Join-Path $appData 'Power Search'
+    $settingsFile = Join-Path $settingsDir 'settings.json'
+
+    if (-not (Test-Path $settingsDir)) {
+        New-Item -ItemType Directory -Force -Path $settingsDir | Out-Null
+    }
+    
+    # Load existing settings
+    if (Test-Path $settingsFile) {
+        $settingsJson = Get-Content -Path $settingsFile
+        $settingsObject = $settingsJson | ConvertFrom-Json
+        $settings = ConvertTo-Hashtable $settingsObject
+    } else {
+        $settings = @{}
+    }
+
+    # Update the specified key with the provided value
+    Write-Host $Settingvalue
+    $settings[$key] = $Settingvalue
+
+    # Save the updated settings
+    $settingsJson = $settings | ConvertTo-Json
+    Set-Content -Path $settingsFile -Value $settingsJson
+}
+function SettingsExists {
+    $appData = [Environment]::GetFolderPath('ApplicationData')
+    $settingsDir = Join-Path $appData 'Power Search'
+    $settingsFile = Join-Path $settingsDir 'settings.json'
+    return (Test-Path $settingsFile)
+}
+
+
+function LoadSettings {
+    $appData = [Environment]::GetFolderPath('ApplicationData')
+    $settingsDir = Join-Path $appData 'Power Search'
+    $settingsFile = Join-Path $settingsDir 'settings.json'
+
+    if (Test-Path $settingsFile) {
+        $settingsJson = Get-Content -Path $settingsFile
+        $settings = $settingsJson | ConvertFrom-Json
+
+        return $settings
+    } else {
+        return $null
+    }
+}
+
+
+
+
+
+
 # Add the "File" dropdown menu to the MenuStrip
 $MenuStrip.Items.Add($FileMenuItem)
 
@@ -475,7 +583,7 @@ $ResultsCount = 0
 $SearchCountTracker = 0
 function Update-ItemCountLabel {
 	
-    $searchResultsLabel.Text = "Search Results: " + $global:ResultsCount
+    $searchResultsLabel.Text = "Search Results: " + (Add-ThousandsSeparator -Number $global:ResultsCount)
 	$virtualListView.VirtualListSize = $global:ResultsCount
 }
 Update-ProcessCountLabel
@@ -625,7 +733,15 @@ if (-Not (Test-Path $global:OneFolderSearch)) {
 }
 
 
+$SearchIndexFolder = Join-Path -Path $PowerSearchFolder -ChildPath "IndexTrees"
 
+# Create the directory if it doesn't exist
+if (!(Test-Path -Path $SearchIndexFolder)) {
+    New-Item -ItemType Directory -Path $SearchIndexFolder | Out-Null
+}
+
+# Apply compression
+Invoke-Expression "compact /C `"$SearchIndexFolder`" 2>&1"
 
 function Test-IsAdmin {
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
@@ -663,7 +779,11 @@ function Remove-PowerSearchContextMenuItem {
 		Start-Process "shell:Appsfolder\33586Cherubim.PowerSearch_azr4d3dytcq80!PowerSearch" -Verb runAs -Wait
     }
 }
-
+$AppDataFolder = [Environment]::GetFolderPath('ApplicationData')
+$PowerSearchFolder = Join-Path -Path $AppDataFolder -ChildPath "Power Search"
+if (-not (Test-Path -Path $PowerSearchFolder)) {
+    New-Item -Path $PowerSearchFolder -ItemType Directory | Out-Null
+}
 
 function Add-PowerSearchContextMenuItem {
     $result = [System.Windows.Forms.MessageBox]::Show("Do you want to add `"Power Search`" to the context menu inside of File Explorer?`nThis will let you quickly start searching in a specific folder by right clicking the background inside of File Explorer.", "Power Search", [System.Windows.Forms.MessageBoxButtons]::YesNo)
@@ -705,9 +825,11 @@ function Remove-PowerSearchContextMenuItemAdmin {
     if (Test-Path -Path (Join-Path -Path $PowerSearchFolder -ChildPath "RemoveContext.txt")) {
 		Remove-Item (Join-Path -Path $PowerSearchFolder -ChildPath "RemoveContext.txt")
 		if (Test-IsAdmin) {
-			Remove-Item -Path $PowerSearchFolder -Recurse -Force
-		
-		
+			#Remove-Item -Path $PowerSearchFolder -Recurse -Force
+			Remove-Item -Path (Join-Path -Path $PowerSearchFolder -ChildPath "Script.bat") -Force
+			Remove-Item -Path (Join-Path -Path $PowerSearchFolder -ChildPath "icon.ico") -Force
+            
+            
 			Remove-ContextMenuItem -Name "Power Search"
 			$global:dontShow = $true
 		}
@@ -938,10 +1060,10 @@ function runsearch {
 	$timer.Stop()
 	$timer.Interval = 500
 	$global:ResultsCount = 0
-	$searchCountLabel.Text = "Search Count: 0"
+	$searchCountLabel.Text = " "
 	$global:SearchCountTracker = 0
 	$searchText = $searchBox.Text
-	$global:VirtualList = @()
+	$global:VirtualList = New-Object 'System.Collections.Generic.List[string]'
 	$virtualListView.Invalidate()
 	Update-ItemCountLabel
     Remove-Item "GUIoutput.txt" -ErrorAction Ignore
@@ -1027,28 +1149,36 @@ $global:linesPerSecond = 400
 function ProcessContent {
     param (
         [array]$Content,
-        [int]$StartingLine
+        [int]$StartingLine,
+        [boolean]$isRunning,
+        [string]$resultFile
     )
 
     $lineNumber = $StartingLine
     $counter = 0
 
-    $MaxToLoad = (1 / ($runningProcesses.Count)) * $global:linesPerSecond
-
+    $MaxToLoad = (1 / ([Math]::max(($runningProcesses.Count), 1))) * $global:linesPerSecond
+    $MaxToLoad = [Math]::max($MaxToLoad, 10000)
+    if (-Not $isRunning) {$MaxToLoad = 100000}
     # Get the start time
     $startTime = Get-Date
-
-    while ($counter -lt $Content.Count) {
-        $lineNumber++
-        $global:VirtualList += $Content[$counter]
-
-        if (($lineNumber - $StartingLine) -gt ($MaxToLoad)) {
-            $counter = $Content.Count # This will stop the loop
+    $TotalLength = $Content.Count
+    while ($counter -lt $TotalLength) {
+        $added = $global:VirtualList.Add($Content[$counter])
+        
+        if (($counter) -gt ($MaxToLoad)) {
+            $lineNumber += ($counter+1)
+            $counter = ($TotalLength+1) # This will stop the loop
         } else {
             $counter++
         }
     }
-
+    if ($counter -eq $TotalLength) {
+        $lineNumber += ($counter)
+        if (-Not $isRunning) {
+            Remove-Item $resultFile
+        }
+    }
     # Get the end time
     $endTime = Get-Date
 
@@ -1056,7 +1186,10 @@ function ProcessContent {
     $duration = $endTime - $startTime
     if ($lineNumber -ne $StartingLine) {
 		$NewlinesPerSecond = ($lineNumber - $StartingLine) / ($duration.TotalMilliseconds/1000)
-		if ($NewlinesPerSecond -lt 10000) {$global:linesPerSecond = ($NewlinesPerSecond+$global:linesPerSecond)/2}
+        $NewlinesPerSecond = [Math]::max($NewlinesPerSecond, 100)
+        $NewlinesPerSecond = [Math]::min($NewlinesPerSecond, 10000)
+		$global:linesPerSecond = ($NewlinesPerSecond+$global:linesPerSecond)/2
+        $global:linesPerSecond = [Math]::max($global:linesPerSecond, 100)
 	}
     
 
@@ -1068,7 +1201,7 @@ $SearchSpeed = 0
 $SearchCountOffset = 0
 $ProcessCount = 0
 $SearchStartTime = Get-Date
-$lastLineRead = @{}
+$global:lastLineRead = @{}
 $timer.Add_Tick({
     $MadeChange = $false
     $searchCount = 0
@@ -1096,9 +1229,9 @@ $timer.Add_Tick({
             if (-not $global:lastLineRead.ContainsKey($driveLetter)) {
                 $global:lastLineRead[$driveLetter] = 0
             }
-            $content = Get-Content $resultFile -ErrorAction Ignore | Select-Object -Skip $global:lastLineRead[$driveLetter]
+            $content = Get-Content $resultFile -ErrorAction Ignore | Select-Object -Skip ($global:lastLineRead[$driveLetter])
 
-			$lineNumber = ProcessContent -Content $content -StartingLine ($global:lastLineRead[$driveLetter])
+			$lineNumber = ProcessContent -Content $content -StartingLine ($global:lastLineRead[$driveLetter]) -IsRunning $isRunning -resultFile $resultFile
 			
 			if ($global:VirtualList.Count -ne $global:ResultsCount) {
 				$global:ResultsCount = $global:VirtualList.Count 
@@ -1106,9 +1239,6 @@ $timer.Add_Tick({
 			}
 			
             $global:lastLineRead[$driveLetter] = $lineNumber
-            if (-Not $isRunning) {
-                Remove-Item $resultFile
-            }
         }
     }
     if ($MadeChange) {
@@ -1140,12 +1270,22 @@ $timer.Add_Tick({
 	} else {
 		$global:SearchSpeed = 0
 	}
+    
     if ($global:SearchSpeed -gt 0) {
-		$searchCountLabel.Text = "Search Count: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker) + "   f/s: " + (Add-ThousandsSeparator -Number $global:SearchSpeed)
-		
-	} else {
-		$searchCountLabel.Text = "Search Count: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker)
-	}
+        if ($global:OneFolderSearch.Length -gt 3) {
+            $searchCountLabel.Text = "Searching: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker) + "   f/s: " + (Add-ThousandsSeparator -Number $global:SearchSpeed)
+        } else {
+            $searchCountLabel.Text = "Updating Index: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker) + "   f/s: " + (Add-ThousandsSeparator -Number $global:SearchSpeed)
+        }
+    } elseif  (-Not $SearchIsRunning) {
+        if ($global:OneFolderSearch.Length -gt 3) {
+            $searchCountLabel.Text = "Items Searched: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker)
+        } else {
+            $searchCountLabel.Text = "Items Indexed: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker)
+        }
+    }
+    
+    
 	
     Update-ProcessCountLabel
 })
