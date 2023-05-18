@@ -338,12 +338,23 @@ function search_files_and_folders(searchText, SearchPath)
     
     if #(SearchPath:gsub([[\\]],[[\]])) == 3 then
         local oldIndexFile = SearchIndexFolder .. "\\" .. driveletter .. "indextree.txt"
+        local OtherSearchNotRunning = (os.remove(TempIndexFile)) or (not lfs.attributes(TempIndexFile))
+        
+        if OtherSearchNotRunning then
+            TempIndexFileHandle = io.open(TempIndexFile, "w")
+        end
+        
         local results = search_saved_file_tree(oldIndexFile, search_table, negatives, driveletter)
-        TempIndexFileHandle = io.open(TempIndexFile, "w")
+        
+        
         search(SearchPath, 0, results)
-        TempIndexFileHandle:close()
-        os.remove(oldIndexFile)
-        os.rename(TempIndexFile, oldIndexFile)
+        if TempIndexFileHandle then
+            TempIndexFileHandle:close()
+            os.remove(oldIndexFile)
+            os.rename(TempIndexFile, oldIndexFile)
+        end
+        
+        
     else
         search(SearchPath)
     end

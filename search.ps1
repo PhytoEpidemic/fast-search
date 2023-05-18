@@ -1060,7 +1060,7 @@ function runsearch {
 	$timer.Stop()
 	$timer.Interval = 500
 	$global:ResultsCount = 0
-	$searchCountLabel.Text = " "
+	$searchCountLabel.Text = "Searching..."
 	$global:SearchCountTracker = 0
 	$searchText = $searchBox.Text
 	$global:VirtualList = New-Object 'System.Collections.Generic.List[string]'
@@ -1270,7 +1270,9 @@ $timer.Add_Tick({
 	} else {
 		$global:SearchSpeed = 0
 	}
-    
+    if ($global:SearchSpeed -le 1) {
+        $global:SearchStartTime = Get-Date
+    }
     if ($global:SearchSpeed -gt 0) {
         if ($global:OneFolderSearch.Length -gt 3) {
             $searchCountLabel.Text = "Searching: " + (Add-ThousandsSeparator -Number $global:SearchCountTracker) + "   f/s: " + (Add-ThousandsSeparator -Number $global:SearchSpeed)
