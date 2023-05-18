@@ -730,6 +730,7 @@ if (-Not (Test-Path $global:OneFolderSearch)) {
 	$global:OneFolderSearch = $TempContent
 	$global:OneFolderSearch = $global:OneFolderSearch -replace "'" -replace '"'
 	$global:OneFolderSearch = Remove-Newlines -InputString $global:OneFolderSearch
+	$global:OneFolderSearch = $global:OneFolderSearch.TrimEnd()
 }
 
 
