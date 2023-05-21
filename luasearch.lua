@@ -61,6 +61,59 @@ function windowsToLuaPattern(windowsPattern)
 end
 
 
+function removeSpecialCharsAndSplit(inputString)
+    -- Replace all punctuation characters with spaces
+    local stringWithSpaces = string.gsub(inputString, "%p", " ")
+
+    -- Split string by spaces using gmatch and return the result
+    local result = {}
+    for word in stringWithSpaces:gmatch("%S+") do
+        table.insert(result, word)
+    end
+    return result
+end
+
+function sortByDash(strings)
+    table.sort(strings, function(a, b)
+        local startsWithDashA = string.sub(a, 1, 1) == "-"
+        local startsWithDashB = string.sub(b, 1, 1) == "-"
+        
+        if startsWithDashA and not startsWithDashB then
+            return true
+        elseif not startsWithDashA and startsWithDashB then
+            return false
+        else
+            return a < b
+        end
+    end)
+
+    return strings
+end
+
+
+function flatten(t)
+    local result = {}
+
+    local function helper(t)
+        for k, v in pairs(t) do
+            if type(v) == "table" then
+                helper(v)
+            else
+                table.insert(result, v)
+            end
+        end
+    end
+
+    helper(t)
+    return result
+end
+function hastrue(tab)
+    for _,val in pairs(tab) do
+        if val then return true end
+    end
+    return false
+end
+
 function contains_all_words(input_string, words_table, negatives)
     for i, word in ipairs(words_table) do
         if not Config.CaseSensitive then
@@ -76,6 +129,15 @@ function contains_all_words(input_string, words_table, negatives)
 		end
     end
     return Config.ContainesAll
+end
+
+function contains_all_words_fast(input_string, words_table)
+    for i, word in ipairs(words_table) do
+		if string.match(input_string:lower(), word) then
+            return true
+		end
+    end
+    return false
 end
 
 local function addresults(driveletter, toadd, results)
@@ -122,7 +184,7 @@ local function save_file_tree(drive, filename)
 end
 
 
-local function search_saved_file_tree(filename, search_table, negatives, driveletter, results)
+local function search_saved_file_tree(filename, search_table, negatives, driveletter, results, quickSearchTable)
     results = results or {}
     local stack = {}
     local drive = driveletter..":"
@@ -133,7 +195,6 @@ local function search_saved_file_tree(filename, search_table, negatives, drivele
         end
         return path
     end
-
     local function search_in_lines(content)
         for line in content:gmatch("[^\r\n]+") do
             local level, type, name = line:match("^(%s*)(%a)%s(.+)$")
@@ -143,7 +204,7 @@ local function search_saved_file_tree(filename, search_table, negatives, drivele
                 table.remove(stack)
             end
             local fullPath = reconstruct_path(stack) .. "\\" .. name
-            if contains_all_words(name, search_table, negatives) then
+            if contains_all_words_fast(name, quickSearchTable) and contains_all_words(name, search_table, negatives) then
                 if lfs.attributes(fullPath) then
                     results = addresults(driveletter, fullPath .. "\n", results)
                 end
@@ -230,6 +291,7 @@ function search_files_and_folders(searchText, SearchPath)
     --end
     
     local search_table = split_by_spaces(searchText)
+    search_table = sortByDash(search_table)
 	local negatives = {}
 	for i,word in ipairs(search_table) do
 		if word:sub(1,1) == "-" then
@@ -265,6 +327,16 @@ function search_files_and_folders(searchText, SearchPath)
     --end
 	local searchcount = 0
     
+    local quickSearchTable = {}
+    for key,word in ipairs(search_table) do
+        if not negatives[key] then
+            table.insert(quickSearchTable, removeSpecialCharsAndSplit(word))
+        end
+    end
+    quickSearchTable = flatten(quickSearchTable)
+    for key,word in ipairs(quickSearchTable) do
+        quickSearchTable[key] = word:lower()
+    end
     local TempIndexFile = SearchIndexFolder.."\\"..driveletter.."indextree.tmp"
     local TempIndexFileHandle = false
 
@@ -284,7 +356,7 @@ function search_files_and_folders(searchText, SearchPath)
 					end
 					
 					if attr.mode == 'directory' then
-                        if contains_all_words(file, search_table, negatives) then
+                        if contains_all_words_fast(file, quickSearchTable) and contains_all_words(file, search_table, negatives) then
                             results = addresults(driveletter, fullPath .. "\n", results)
                         end
                         
@@ -297,7 +369,7 @@ function search_files_and_folders(searchText, SearchPath)
                         
                         search(fullPath, level + 1, results)
                     else
-                        if contains_all_words(file, search_table, negatives) then
+                        if contains_all_words_fast(file, quickSearchTable) and  contains_all_words(file, search_table, negatives) then
                             results = addresults(driveletter, fullPath .. "\n", results)
                         end
                         if TempIndexFileHandle then
@@ -339,12 +411,12 @@ function search_files_and_folders(searchText, SearchPath)
     if #(SearchPath:gsub([[\\]],[[\]])) == 3 then
         local oldIndexFile = SearchIndexFolder .. "\\" .. driveletter .. "indextree.txt"
         local OtherSearchNotRunning = (os.remove(TempIndexFile)) or (not lfs.attributes(TempIndexFile))
-        
+
         if OtherSearchNotRunning then
             TempIndexFileHandle = io.open(TempIndexFile, "w")
         end
         
-        local results = search_saved_file_tree(oldIndexFile, search_table, negatives, driveletter)
+        local results = search_saved_file_tree(oldIndexFile, search_table, negatives, driveletter, false, quickSearchTable)
         
         
         search(SearchPath, 0, results)
