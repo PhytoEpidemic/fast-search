@@ -654,34 +654,33 @@ $global:FileDataCache = @{}
 
 function Get-CachedFileData {
     param (
+        [Parameter(Mandatory=$true)]
         [string]$FilePath
     )
 
     if ($global:FileDataCache.ContainsKey($FilePath)) {
         return $global:FileDataCache[$FilePath]
-    } else {
-        
-		$fileItem = Get-Item -LiteralPath $FilePath -ErrorAction Ignore
-
-        if ($fileItem -and (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
-            $fileData = @{
-                Size = $fileItem.Length
-                DateCreated = $fileItem.CreationTime
-                DateModified = $fileItem.LastWriteTime
-            }
-        } else {
-            $fileData = @{
-                Size = 0
-                DateCreated = $fileItem.CreationTime
-                DateModified = $fileItem.LastWriteTime
-            }
-        }
-
-        $global:FileDataCache[$FilePath] = $fileData
-        return $fileData
     }
-}
 
+    $fileItem = Get-Item -LiteralPath $FilePath -ErrorAction Ignore
+
+    if ($fileItem) {
+        $fileData = @{
+            Size = $fileItem.Length
+            DateCreated = $fileItem.CreationTime
+            DateModified = $fileItem.LastWriteTime
+        }
+    } else {
+        $fileData = @{
+            Size = 0
+            DateCreated = [DateTime]::MinValue
+            DateModified = [DateTime]::MinValue
+        }
+    }
+
+    $global:FileDataCache[$FilePath] = $fileData
+    return $fileData
+}
 
 
 function Add-ContextMenuItem {
@@ -1058,6 +1057,7 @@ function runsearch {
 	$global:ProcessCount = 0
 	$global:SearchStartTime = Get-Date
 	$global:lastLineRead = @{}
+    $global:ResultFileSizes = @{}
 	$timer.Stop()
 	$timer.Interval = 500
 	$global:ResultsCount = 0
@@ -1203,6 +1203,7 @@ $SearchCountOffset = 0
 $ProcessCount = 0
 $SearchStartTime = Get-Date
 $global:lastLineRead = @{}
+$global:ResultFileSizes = @{}
 $timer.Add_Tick({
     $MadeChange = $false
     $searchCount = 0
@@ -1226,10 +1227,16 @@ $timer.Add_Tick({
             $SearchStats = LoadOptions -Filename $statsFile
             $searchCount += $SearchStats["searchcount"]
         }
-        if (Test-Path -LiteralPath $resultFile) {
+        $resultFileItem = Get-Item $resultFile
+        $resultFileSize = $resultFileItem.Length
+        if (-not $global:ResultFileSizes.ContainsKey($driveLetter)) {
+            $global:ResultFileSizes[$driveLetter] = 0
+        }
+        if (($resultFileSize -gt $global:ResultFileSizes[$driveLetter]) -and (Test-Path -LiteralPath $resultFile)) {
             if (-not $global:lastLineRead.ContainsKey($driveLetter)) {
                 $global:lastLineRead[$driveLetter] = 0
             }
+            $global:ResultFileSizes[$driveLetter] = $resultFileSize
             $content = Get-Content $resultFile -ErrorAction Ignore | Select-Object -Skip ($global:lastLineRead[$driveLetter])
 
 			$lineNumber = ProcessContent -Content $content -StartingLine ($global:lastLineRead[$driveLetter]) -IsRunning $isRunning -resultFile $resultFile
