@@ -13,3 +13,5 @@ test.lua
 SearchOptions.txt
 context.ps1
 fast-search.code-workspace
+*done.txt
+robosearch.lua

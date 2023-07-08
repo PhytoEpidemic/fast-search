@@ -6,6 +6,242 @@ local SearchIndexFolder = PowerSearchFolder .. "\\IndexTrees"
 local function showwindow()
 	os.execute([[powershell -window normal -command ""]])
 end
+local function pause()
+    os.execute("pause")
+end
+local function updateStats(driveletter,searchcount)
+	local stats = io.open(driveletter .. "stats.txt", "w")
+	stats:write("searchcount="..tostring(searchcount))
+	stats:close()
+end
+
+
+
+
+local function listFilesAndFolders(path, includeWords, excludeWords, search_table, originalInput)
+    -- Temporary empty directory
+    local tempDir = os.tmpname()
+    --os.execute("mkdir " .. tempDir)
+    local FilesOnly = Config.FilesOnly
+    local FoldersOnly = Config.FoldersOnly
+    -- Construct /IF arguments for robocopy
+    local includeFilter = ""
+    --print((#excludeWords+1),(#originalInput) )
+    if not FoldersOnly then
+        for i=1,(#originalInput) do
+            local word = originalInput[i]
+            if not excludeWords[i] then
+                --print(word)
+                local ExactMatch = remove_enclosed_quotes(word)
+                --print(ExactMatch)
+                if ExactMatch then
+                    includeFilter = includeFilter .. [[ /IF "]] .. ExactMatch .. [["]]
+                    --print(includeFilter)
+                else
+                    includeFilter = includeFilter .. [[ /IF "]] ..
+    		    	    word .. [[*" /IF "*]] ..
+    		    	    word .. [[*" /IF "]] ..
+    		    	    word .. [[" /IF "*]] ..
+    		    	    word .. [["]]
+                end
+            end
+        end
+    else
+        includeFilter = " /NFL"
+    end
+    if FilesOnly then
+        includeFilter = includeFilter.." /NDL"
+    end
+    local excludeFilter = ""
+    for i, word in ipairs(originalInput) do
+        if excludeWords[i] then
+
+            excludeFilter = excludeFilter .. [[ /XF "]] ..
+			word .. [[*" /XF "*]] ..
+			word .. [[*" /XF "]] ..
+			word .. [[" /XF "*]] ..
+			word .. [["]]
+        end
+    end
+
+    -- Run robocopy
+
+    local FolderChangeQ = io.popen([[robocopy "]]..path..[[" "]]..tempDir..[[" /E /L /NJH /NJS /FP /NS]] .. includeFilter)--..excludeFilter)
+
+    -- Return an iterator over the files and folders
+    return function()
+        local line = FolderChangeQ:read("*l")
+        if line then
+            -- Remove "New File" or "New Dir" prefix
+            if line:find("^%s*New File%s+") then
+                line = line:sub(18)
+            elseif line:find("^%s*New Dir%s") then
+                line = line:sub(11)
+            end
+
+            return line:match("^%s*(.-)%s*$") -- Remove leading and trailing whitespaces
+        else
+            -- Cleanup when no more lines
+            FolderChangeQ:close()
+            --os.execute("rmdir /S /Q " .. tempDir)
+            return nil
+        end
+    end
+end
+
+
+function gsubFirst(s, pattern, repl)
+    local start_pos, end_pos = string.find(s, pattern, 1, true)
+    if start_pos == nil then
+        return s
+    end
+    local first_part = string.sub(s, 1, start_pos - 1)
+    local last_part = string.sub(s, end_pos + 1)
+    return first_part .. repl .. last_part
+end
+
+
+local function listFilesAndFoldersMT(path, includeWords, excludeWords, search_table, originalInput, driveletter)
+    -- Temporary empty directory
+    local tempDir = os.tmpname()
+    --os.execute("mkdir " .. tempDir)
+    local FilesOnly = Config.FilesOnly
+    local FoldersOnly = Config.FoldersOnly
+    -- Construct /IF arguments for robocopy
+    local includeFilter = ""
+    --print((#excludeWords+1),(#originalInput) )
+    for i=1,(#originalInput) do
+        local word = originalInput[i]
+        if not excludeWords[i] then
+            --print(word)
+            local ExactMatch = remove_enclosed_quotes(word)
+            --print(ExactMatch)
+            if ExactMatch then
+                includeFilter = includeFilter .. [[ /IF "]] .. ExactMatch .. [["]]
+                --print(includeFilter)
+            else
+                includeFilter = includeFilter .. [[ /IF "]] ..
+		    	    word .. [[*" /IF "*]] ..
+		    	    word .. [[*" /IF "]] ..
+		    	    word .. [[" /IF "*]] ..
+		    	    word .. [["]]
+            end
+        end
+    end
+    
+    local excludeFilter = ""
+    for i, word in ipairs(originalInput) do
+        if excludeWords[i] then
+
+            excludeFilter = excludeFilter .. [[ /XF "]] ..
+			word .. [[*" /XF "*]] ..
+			word .. [[*" /XF "]] ..
+			word .. [[" /XF "*]] ..
+			word .. [["]]
+        end
+    end
+    local robologfile = driveletter..[[robolog.txt]]
+    -- Run robocopy
+    local roboprocess
+    local numThreads = ""
+    if Config.ThreadsPD > 1 then
+        numThreads = " /MT:"..(tostring(Config.ThreadsPD))
+    end
+    if (not FoldersOnly) then
+        roboprocess = io.popen([[robocopy "]]..path..[[" "]]..tempDir..[[" /E /L]]..numThreads..[[ /LOG:"]]..robologfile..[[" /NJH /NJS /FP /NS]] .. includeFilter)--..excludeFilter)
+    end
+    if roboprocess then
+        roboprocess:read("*all")
+        roboprocess:close()
+        roboprocess = nil
+    end
+    local FolderChangeQ
+    if (not FilesOnly) then
+        FolderChangeQ = io.popen([[robocopy "]]..path..[[" "]]..tempDir..[[" /E /L /NFL /NJH /NJS /FP /NS]])--..excludeFilter)
+    end
+    
+    local roboprocess2
+    if (not FoldersOnly) then
+        roboprocess2 = io.open(robologfile,"r")
+    end
+
+    -- Return an iterator over the files and folders
+    return function()
+        local line
+        local Handle
+        if roboprocess2 then
+            Handle = roboprocess2
+        elseif FolderChangeQ then
+            Handle = FolderChangeQ
+            
+        end
+        line = Handle:read("*l")
+        if line then
+            --line = line:sub(5)
+            line = gsubFirst(line,"100%","")
+            --print(line) pause()
+            -- Remove "New File" or "New Dir" prefix
+            if line:find("^%s*New File%s+") then
+                line = line:sub(18)
+                --print(line)
+            elseif line:find("^%s*New Dir%s") then
+                line = line:sub(11)
+            end
+            --print(line:match("^%s*(.-)%s*$"))
+            return line:match("^%s*(.-)%s*$") -- Remove leading and trailing whitespaces
+        else
+            -- Cleanup when no more lines
+            Handle:close()
+            --os.execute("rmdir /S /Q " .. tempDir)
+            if roboprocess2 then
+                
+                roboprocess2 = nil
+                if FolderChangeQ then
+                    return "dirs"
+                else
+                    return nil
+                end
+            end
+            return nil
+        end
+    end
+end
+
+
+local function string_findlast(str,pat)
+	local sspot,lspot = str:find(pat)
+	local lastsspot, lastlspot = sspot, lspot
+	while sspot do
+		lastsspot, lastlspot = sspot, lspot
+		sspot, lspot = str:find(pat,lastlspot+1)
+	end
+	return lastsspot, lastlspot
+end
+local function folderUP(path,num)
+	num = num or 1
+	local look = string_findlast(path,"\\")
+	if look then
+		local upafolder = path:sub(1,look-1)
+		if num > 1 then
+			return folderUP(upafolder,num-1)
+		else
+			return upafolder
+		end
+
+	else
+		return ""
+	end
+end
+
+local function endOfPath(f)
+	local prevPath = folderUP(f)
+	local cutspot = #prevPath
+	if cutspot == 0 then
+		cutspot = -1
+	end
+	return f:sub(cutspot+2,#f)
+end
+
 
 local function loadOptions(filename)
 	local options = {}
@@ -195,6 +431,8 @@ local function search_saved_file_tree(filename, search_table, negatives, drivele
         end
         return path
     end
+    local FilesOnly = Config.FilesOnly
+    local FoldersOnly = Config.FoldersOnly
     local function search_in_lines(content)
         for line in content:gmatch("[^\r\n]+") do
             local level, type, name = line:match("^(%s*)(%a)%s(.+)$")
@@ -205,8 +443,11 @@ local function search_saved_file_tree(filename, search_table, negatives, drivele
             end
             local fullPath = reconstruct_path(stack) .. "\\" .. name
             if contains_all_words_fast(name, quickSearchTable) and contains_all_words(name, search_table, negatives) then
-                if lfs.attributes(fullPath) then
-                    results = addresults(driveletter, fullPath .. "\n", results)
+                local fileInfo = lfs.attributes(fullPath)
+                if fileInfo then
+                    if (fileInfo.mode == "directory" and (not FilesOnly)) or (fileInfo.mode == "file" and (not FoldersOnly)) then
+                        results = addresults(driveletter, fullPath .. "\n", results)
+                    end
                 end
             end
             if type == "d" then
@@ -224,6 +465,59 @@ local function search_saved_file_tree(filename, search_table, negatives, drivele
     search_in_lines(content)
     content = nil
     return results
+end
+
+local function robo_search(folderPath, search_table, negatives, driveletter, results, quickSearchTable, originalInput,ifiles)
+    results = results or {}
+    local drive = driveletter..":"
+    local folderCount = 0
+    local FilesOnly = Config.FilesOnly
+    local FoldersOnly = Config.FoldersOnly
+    for file in ifiles do
+        local fileName = endOfPath( file)
+        if file:sub(#file) == "\\" then
+            file = file:sub(1,#file-1)
+        end
+        local fileInfo = lfs.attributes(file)
+        if fileInfo then
+            local isDirectory = fileInfo.mode == "directory"
+            if isDirectory then
+                folderCount = folderCount+1
+                if folderCount%197 == 1 then
+                    updateStats(driveletter,folderCount)
+                    --if lfs.attributes("StopSearch.txt") then
+                        --os.exit()
+                        --return results
+                    --end
+                end
+            else
+                --print(fileName)
+            end
+            
+            fileName = endOfPath((file))
+            --print((fileName))
+            if (isDirectory and (not FilesOnly)) or (fileInfo.mode == "file" and (not FoldersOnly)) then
+                if contains_all_words_fast(fileName, quickSearchTable) and contains_all_words(fileName, search_table, negatives) then
+                    results = addresults(driveletter, file .. "\n", results)
+                end
+            end
+        end
+            
+    end
+    updateStats(driveletter,folderCount)
+    return results
+end
+
+
+local function isFolderEmpty(path)
+    if lfs.attributes(path) then
+        for file in lfs.dir(path) do
+            if file ~= "." and file ~= ".." then
+                return false
+            end
+        end
+    end
+    return true
 end
 
 function extract_lines(file_path, numlines)
@@ -252,6 +546,20 @@ function extract_lines(file_path, numlines)
 end
 
 
+function DeepCopy(orig)
+    local origType = type(orig)
+    local copy
+    if origType == 'table' then
+        copy = {}
+        for origKey, origValue in next, orig, nil do
+            copy[DeepCopy(origKey)] = DeepCopy(origValue)
+        end
+        setmetatable(copy, DeepCopy(getmetatable(orig)))
+    else -- number, string, boolean, etc
+        copy = orig
+    end
+    return copy
+end
 
 
 
@@ -276,11 +584,6 @@ end
 local function space2quote(str)
 	return str:gsub(" ",'" "')
 end
-local function updateStats(driveletter,searchcount)
-	local stats = io.open(driveletter .. "stats.txt", "w")
-	stats:write("searchcount="..tostring(searchcount))
-	stats:close()
-end
 
 function search_files_and_folders(searchText, SearchPath)
     SearchPath = trim(SearchPath:gsub([["]],""):gsub([[']],""))
@@ -292,6 +595,7 @@ function search_files_and_folders(searchText, SearchPath)
     
     local search_table = split_by_spaces(searchText)
     search_table = sortByDash(search_table)
+    local originalInput = {}
 	local negatives = {}
 	for i,word in ipairs(search_table) do
 		if word:sub(1,1) == "-" then
@@ -300,6 +604,7 @@ function search_files_and_folders(searchText, SearchPath)
 		else
 			negatives[i] = false
 		end
+		originalInput[i] = search_table[i]
 		search_table[i] = windowsToLuaPattern(search_table[i])
 		
         if not Config.CaseSensitive then
@@ -326,7 +631,6 @@ function search_files_and_folders(searchText, SearchPath)
     --     end
     --end
 	local searchcount = 0
-    
     local quickSearchTable = {}
     for key,word in ipairs(search_table) do
         if not negatives[key] then
@@ -339,7 +643,9 @@ function search_files_and_folders(searchText, SearchPath)
     end
     local TempIndexFile = SearchIndexFolder.."\\"..driveletter.."indextree.tmp"
     local TempIndexFileHandle = false
-
+    local FoldersToSearch = {}
+    local FilesOnly = Config.FilesOnly
+    local FoldersOnly = Config.FoldersOnly
 	function search(path, level, results)
 		level = level or 0
         for file in lfs.dir(path) do
@@ -356,19 +662,22 @@ function search_files_and_folders(searchText, SearchPath)
 					end
 					
 					if attr.mode == 'directory' then
-                        if contains_all_words_fast(file, quickSearchTable) and contains_all_words(file, search_table, negatives) then
+                        if (not FilesOnly) and contains_all_words_fast(file, quickSearchTable) and contains_all_words(file, search_table, negatives) then
                             results = addresults(driveletter, fullPath .. "\n", results)
                         end
                         
-                       
+                        
                         --table.insert(subProsesses, io.popen([[SearchAgent.exe luasearch.lua "]]..fullPath..[[" 2>&1]]))
                         --checkSubprosess()
                         if TempIndexFileHandle then
                             TempIndexFileHandle:write(string.rep(" ", level) .. "d " .. file .. "\n")
                         end
-                        
-                        search(fullPath, level + 1, results)
-                    else
+                        if Config.SearchMethod ~= "Normal FIFO" then
+                            search(fullPath, level + 1, results)
+                        else
+                            table.insert(FoldersToSearch,fullPath)
+                        end
+                    elseif not FoldersOnly then
                         if contains_all_words_fast(file, quickSearchTable) and  contains_all_words(file, search_table, negatives) then
                             results = addresults(driveletter, fullPath .. "\n", results)
                         end
@@ -384,13 +693,13 @@ function search_files_and_folders(searchText, SearchPath)
 	
     local function save_file_tree(drive, filename)
         
-    
+        
         local function write_file_tree(path, level)
             for entry in lfs.dir(path) do
                 if entry ~= "." and entry ~= ".." then
                     local fullPath = path .. "\\" .. entry
                     local attr = lfs.attributes(fullPath)
-    
+                    
                     if attr then
                         if attr.mode == "directory" then
                             
@@ -402,44 +711,109 @@ function search_files_and_folders(searchText, SearchPath)
                 end
             end
         end
-    
+        
         write_file_tree(drive, 0)
         file:close()
     end
-
+    local hasShortWord = false
+    local hasManyWords = #quickSearchTable >= 5
+    for i,word in ipairs(quickSearchTable) do
+        if #word <= 3 then
+            if hasShortWord then
+                hasShortWord = math.min(hasShortWord,#word)
+            else
+                hasShortWord = #word
+            end
+        end
+    end
+    if (hasManyWords and hasShortWord) or ((hasShortWord or math.huge) <= 2) then
+        --Config.SearchMethod = false
+    end
+    SearchPath = SearchPath:gsub([[\\]],[[\]])
+    if #(SearchPath) ~= 3 then
+        if Config.SearchMethod == "Normal Index" then
+            Config.SearchMethod = "Normal FIFO"
+        end
+    end
+    local oldIndexFile = SearchIndexFolder .. "\\" .. driveletter .. "indextree.txt"
+    local OtherSearchNotRunning = (os.remove(TempIndexFile)) or (not lfs.attributes(TempIndexFile))
     
-    if #(SearchPath:gsub([[\\]],[[\]])) == 3 then
-        local oldIndexFile = SearchIndexFolder .. "\\" .. driveletter .. "indextree.txt"
-        local OtherSearchNotRunning = (os.remove(TempIndexFile)) or (not lfs.attributes(TempIndexFile))
-
-        if OtherSearchNotRunning then
-            TempIndexFileHandle = io.open(TempIndexFile, "w")
-        end
-        
-        local results = search_saved_file_tree(oldIndexFile, search_table, negatives, driveletter, false, quickSearchTable)
-        
-        
-        search(SearchPath, 0, results)
-        if TempIndexFileHandle then
-            TempIndexFileHandle:close()
-            os.remove(oldIndexFile)
-            os.rename(TempIndexFile, oldIndexFile)
-        end
-        
-        
-    else
-        search(SearchPath)
+    if OtherSearchNotRunning and Config.SearchMethod == "Normal Index" then
+        TempIndexFileHandle = io.open(TempIndexFile, "w")
     end
     
+    print(Config.SearchMethod)
+    
+    --pause()
+    if Config.SearchMethod == "RoboSearch" then
+        if (#SearchPath < 4) then 
+            SearchPath = SearchPath.."\\" 
+        end
+        local results = false
+        if not isFolderEmpty(SearchPath) then
+            local ifiles = listFilesAndFolders(SearchPath, quickSearchTable, negatives, search_table, originalInput)
+            results = robo_search(SearchPath, search_table, negatives, driveletter, results, quickSearchTable, originalInput, ifiles)
+        end
+        SearchPath = SearchPath:sub(1,#SearchPath-1)
+        
+    elseif Config.SearchMethod == "RoboSearchMT" then
+        if (#SearchPath < 4) then 
+            SearchPath = SearchPath.."\\" 
+        end
+        local results = false
+        if not isFolderEmpty(SearchPath) then
+            local ifiles = listFilesAndFoldersMT(SearchPath, quickSearchTable, negatives, search_table, originalInput, driveletter)
+            results = robo_search(SearchPath, search_table, negatives, driveletter, results, quickSearchTable, originalInput, ifiles)
+        end
+        SearchPath = SearchPath:sub(1,#SearchPath-1)
+    elseif Config.SearchMethod == "Normal Index" then
+        local results = false
+        results = search_saved_file_tree(oldIndexFile, search_table, negatives, driveletter, results, quickSearchTable)
+        search(SearchPath, 0, results)
+        updateStats(driveletter,searchcount)
+    elseif Config.SearchMethod == "Normal FIFO" then
+        table.insert(FoldersToSearch,SearchPath)
+        local indexspot = 0
+        while true do
+            indexspot = indexspot+1
+            local thepath = FoldersToSearch[indexspot]
+            if thepath then
+                search(thepath)
+            else
+                break
+            end
+        end
+        updateStats(driveletter,searchcount)
+    elseif Config.SearchMethod == "Normal" then
+        search(SearchPath)
+        updateStats(driveletter,searchcount)
+    end
+        
+        
+        
+        
+        
+    if TempIndexFileHandle then
+        TempIndexFileHandle:close()
+        os.remove(oldIndexFile)
+        os.rename(TempIndexFile, oldIndexFile)
+    end
+        
+    
     --checkSubprosess()
-    updateStats(driveletter,searchcount)
+    
 end
 
 
 --print(arg[1])
 Config = loadOptions("SearchOptions.txt")
-local SearchPath = extract_lines("GUIoutput.txt",1)[1] --arg[1] or 
+Config.ThreadsPD = tonumber(Config.ThreadsPD)
+local SearchPath = extract_lines("GUIoutput.txt",1)[1] --arg[1] or
+os.execute([[title SearchAgent - ]]..SearchPath)
 --print(SearchPath)
+local donesignal = (SearchPath:sub(1,1)).."done.txt"
+os.remove(donesignal)
+os.remove((SearchPath:sub(1,1)).."stats.txt")
 os.remove("GUIoutput.txt")
 local OK, errormsg = pcall( search_files_and_folders, Config.SearchText, SearchPath)
 if not OK then
@@ -450,4 +824,5 @@ if not OK then
     os.execute("pause")
     
 end
---os.execute("pause")
+--pause()
+io.open(donesignal,"w"):close()
